@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -144,56 +145,54 @@ def main():
     
     # === 模式 2: 数据集评估 ===
     if args.dataset:
-        if args.dataset.lower() in ['czoo', 'c-zoo', 'zoo']:
-            annotation = 'data_CZoo/annotations_czoo.txt'
-            image_dir = 'data_CZoo'
+        data_root = config['data']['root_dir']
+        
+        if args.dataset.lower() in ['czoo_train', 'czoo-train', 'train']:
+            data_path = os.path.join(data_root, 'data_CZoo_split', 'train')
+        elif args.dataset.lower() in ['czoo_test', 'czoo-test', 'test']:
+            data_path = os.path.join(data_root, 'data_CZoo_split', 'test')
         elif args.dataset.lower() in ['ctai', 'c-tai', 'tai']:
-            annotation = 'data_CTai/annotations_ctai.txt'
-            image_dir = 'data_CTai'
+            data_path = os.path.join(data_root, 'data_CTai', 'face_images')
         else:
-            print(f"未知数据集: {args.dataset}")
+            data_path = args.dataset
+        
+        if not os.path.exists(data_path):
+            print(f"错误：路径不存在 → {data_path}")
             return
         
         print(f"=> 正在加载数据集 {args.dataset}...")
-        dataset = ChimpanzeeDataset(
-            root_dir=config['data']['root_dir'],
-            annotation_file=annotation,
-            image_dir=image_dir,
-            min_samples_per_identity=1
-        )
         
-        # 映射标签到统一 ID
-        identity_map = {name: i for i, name in enumerate(identity_names)}
-        valid_indices = []
-        for i in range(len(dataset)):
-            name = dataset.samples[i]['identity']
-            if name in identity_map:
-                valid_indices.append(i)
-        
-        from torch.utils.data import Subset, DataLoader
-        subset = Subset(dataset, valid_indices)
+        from torchvision.datasets import ImageFolder
         transform = get_val_transform(config)
+        dataset = ImageFolder(root=data_path, transform=transform)
         
-        # 手动构造带标签的 loader
-        class LabeledSubset(torch.utils.data.Dataset):
-            def __init__(self, subset, identity_map, transform):
-                self.subset = subset
-                self.identity_map = identity_map
-                self.transform = transform
-                
+        # ImageFolder 的类别名就是文件夹名（按字母排序）
+        folder_classes = dataset.classes  # ['Alex', 'Alexandra', 'Annett', ...]
+        
+        # 但模型训练时用的是这个顺序:
+        train_identities = identity_names  # ['Alex', 'Jahaga', 'Alexandra', ...]
+        
+        # 创建文件夹名 → 训练时索引 的映射
+        folder_to_train_idx = {name: train_identities.index(name) for name in folder_classes if name in train_identities}
+        
+        print(f"找到 {len(folder_classes)} 个文件夹类别")
+        print(f"映射到 {len(folder_to_train_idx)} 个训练身份")
+
+        # 重新构造带正确标签的 DataLoader
+        class CorrectLabelDataset(torch.utils.data.Dataset):
+            def __init__(self, base_dataset, folder_to_train_idx):
+                self.base = base_dataset
+                self.mapping = folder_to_train_idx
             def __len__(self):
-                return len(self.subset)
-            
+                return len(self.base)
             def __getitem__(self, idx):
-                img, _ = self.subset[idx]
-                img = self.transform(img)
-                name = self.subset.dataset.samples[self.subset.indices[idx]]['identity']
-                label = self.identity_map[name]
-                return img, torch.tensor(label)
+                img, folder_label = self.base[idx]
+                correct_label = self.mapping[folder_classes[folder_label]]
+                return img, torch.tensor(correct_label)
         
-        labeled_subset = LabeledSubset(subset, identity_map, transform)
-        loader = DataLoader(labeled_subset, batch_size=64, shuffle=False, num_workers=0)
-        
+        corrected_dataset = CorrectLabelDataset(dataset, folder_to_train_idx)
+        loader = DataLoader(corrected_dataset, batch_size=64, shuffle=False, num_workers=0)
+
         print(f"=> 开始推理...")
         results = predict_batch(model, loader, device, identity_names)
         accuracy = compute_accuracy(results)
