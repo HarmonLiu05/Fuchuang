@@ -12,7 +12,9 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from data.dataset import ChimpanzeeDataset, get_val_transform
 from utils.utils import load_config, set_seed
-from models.arcface import ArcFaceModel
+from models.backbone import ResNet50Backbone
+from models.bottleneck import Bottleneck
+from models.arcface import ArcFace
 from utils.metrics import compute_accuracy, compute_tar_far
 
 
@@ -21,17 +23,20 @@ def evaluate_wild(config_path, checkpoint):
     config = load_config(config_path)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 加载训练好的模型
-    model = ArcFaceModel(
-        num_classes=config['model']['num_identities'],
-        backbone_name=config['model']['backbone'],
-        bottleneck_dim=config['model']['bottleneck_dim'],
-        arcface_s=config['model']['arcface_s'],
-        arcface_m=config['model']['arcface_m']
-    )
-    model.load_state_dict(torch.load(checkpoint, map_location=device))
-    model = model.to(device)
-    model.eval()
+    # 加载模型权重（手动构建模型）
+    backbone = ResNet50Backbone(pretrained=False)
+    bottleneck = Bottleneck()
+    # ArcFace 需要特殊处理，因为它是分类头
+    checkpoint_data = torch.load(checkpoint, map_location=device)
+    
+    # 加载 backbone 和 bottleneck
+    backbone.load_state_dict({k.replace('backbone.', ''): v for k, v in checkpoint_data.items() if 'backbone' in k})
+    bottleneck.load_state_dict({k.replace('bottleneck.', ''): v for k, v in checkpoint_data.items() if 'bottleneck' in k})
+    
+    backbone = backbone.to(device)
+    bottleneck = bottleneck.to(device)
+    backbone.eval()
+    bottleneck.eval()
     
     # 创建野外数据集
     wild_dataset = ChimpanzeeDataset(
@@ -58,8 +63,8 @@ def evaluate_wild(config_path, checkpoint):
     with torch.no_grad():
         for images, lbls in pbar:
             images = images.to(device, non_blocking=True)
-            feats = model.backbone(images)
-            feats = model.bottleneck(feats)
+            feats = backbone(images)
+            feats = bottleneck(feats)
             features.append(feats.cpu())
             labels.append(lbls)
     
