@@ -84,7 +84,7 @@ from torchvision import transforms
 def get_train_transform(config):
     """根据配置创建训练集增强"""
     aug = config.get('augmentation', {})
-    
+
     return transforms.Compose([
         transforms.Resize((config['data']['image_size'], config['data']['image_size'])),
         transforms.RandomHorizontalFlip(p=aug.get('random_horizontal_flip', 0.5)),
@@ -103,13 +103,13 @@ def get_train_transform(config):
             kernel_size=aug.get('gaussian_blur_kernel', 3),
             sigma=aug.get('gaussian_blur_sigma', (0.1, 2.0))
         ),
+        transforms.ToTensor(),
         transforms.RandomErasing(
             p=aug.get('random_erasing_p', 0.5),
             scale=aug.get('random_erasing_scale', (0.02, 0.15)),
             ratio=aug.get('random_erasing_ratio', (0.3, 3.3)),
             value='random'
         ),
-        transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
 
