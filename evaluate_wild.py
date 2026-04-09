@@ -23,18 +23,19 @@ def evaluate_wild(config_path, checkpoint):
     config = load_config(config_path)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 加载模型权重（手动构建模型）
-    backbone = ResNet50Backbone(pretrained=False)
-    bottleneck = Bottleneck()
-    # ArcFace 需要特殊处理，因为它是分类头
+    # 加载模型 - 用 train.py 里的 ChimpFaceModel
+    from train import ChimpFaceModel
+    model = ChimpFaceModel(config, num_identities=24)
+    model = model.to(device)
+    
     checkpoint_data = torch.load(checkpoint, map_location=device)
+    if 'model_state_dict' in checkpoint_data:
+        model.load_state_dict(checkpoint_data['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint_data)
     
-    # 加载 backbone 和 bottleneck
-    backbone.load_state_dict({k.replace('backbone.', ''): v for k, v in checkpoint_data.items() if 'backbone' in k})
-    bottleneck.load_state_dict({k.replace('bottleneck.', ''): v for k, v in checkpoint_data.items() if 'bottleneck' in k})
-    
-    backbone = backbone.to(device)
-    bottleneck = bottleneck.to(device)
+    backbone = model.backbone
+    bottleneck = model.bottleneck
     backbone.eval()
     bottleneck.eval()
     
