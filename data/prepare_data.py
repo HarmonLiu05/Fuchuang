@@ -61,15 +61,15 @@ def prepare_dataloaders(config, seed=42):
         batch_size=config['training']['batch_size'],
         shuffle=True,
         num_workers=config['data'].get('num_workers', 2),
-        pin_memory=True
+        pin_memory=torch.cuda.is_available()  # 仅 GPU 时启用
     )
-    
+
     val_loader = DataLoader(
         val_subset,
         batch_size=config['training']['batch_size'],
         shuffle=False,
         num_workers=config['data'].get('num_workers', 2),
-        pin_memory=True
+        pin_memory=torch.cuda.is_available()
     )
     
     return train_loader, val_loader, len(full_dataset.identities), full_dataset
