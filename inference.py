@@ -42,11 +42,7 @@ def predict_single(model, image_path, config, device, identity_names):
     单张图像推理
     返回: (预测名字, 置信度, Top5 预测)
     """
-    transform = get_val_transform(
-        img_size=config['data']['img_size'],
-        mean=config['data']['norm_mean'],
-        std=config['data']['norm_std']
-    )
+    transform = get_val_transform(config)
     
     # 预处理
     img = Image.open(image_path).convert('RGB')
@@ -115,7 +111,7 @@ def compute_accuracy(results):
 
 def main():
     parser = argparse.ArgumentParser(description='分类式推理')
-    parser.add_argument('--config', default='configs/config_vast.yaml')
+    parser.add_argument('--config', default='configs/config_local.yaml')
     parser.add_argument('--checkpoint', required=True, help='模型权重路径')
     parser.add_argument('--image', type=str, help='单张图像路径')
     parser.add_argument('--dataset', type=str, help='评估数据集 (C-Zoo 或 C-Tai)')
@@ -176,29 +172,27 @@ def main():
         
         from torch.utils.data import Subset, DataLoader
         subset = Subset(dataset, valid_indices)
-        transform = get_val_transform(
-            img_size=config['data']['img_size'],
-            mean=config['data']['norm_mean'],
-            std=config['data']['norm_std']
-        )
+        transform = get_val_transform(config)
         
         # 手动构造带标签的 loader
         class LabeledSubset(torch.utils.data.Dataset):
-            def __init__(self, subset, identity_map):
+            def __init__(self, subset, identity_map, transform):
                 self.subset = subset
                 self.identity_map = identity_map
+                self.transform = transform
                 
             def __len__(self):
                 return len(self.subset)
             
             def __getitem__(self, idx):
                 img, _ = self.subset[idx]
+                img = self.transform(img)
                 name = self.subset.dataset.samples[self.subset.indices[idx]]['identity']
                 label = self.identity_map[name]
                 return img, torch.tensor(label)
         
-        labeled_subset = LabeledSubset(subset, identity_map)
-        loader = DataLoader(labeled_subset, batch_size=64, shuffle=False, num_workers=4)
+        labeled_subset = LabeledSubset(subset, identity_map, transform)
+        loader = DataLoader(labeled_subset, batch_size=64, shuffle=False, num_workers=0)
         
         print(f"=> 开始推理...")
         results = predict_batch(model, loader, device, identity_names)
