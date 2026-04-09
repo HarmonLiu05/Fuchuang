@@ -15,7 +15,7 @@ from utils.utils import load_config, set_seed
 from models.backbone import ResNet50Backbone
 from models.bottleneck import Bottleneck
 from models.arcface import ArcFace
-from utils.metrics import compute_accuracy, compute_tar_far
+from utils.metrics import compute_accuracy, compute_tar_at_far, compute_all_metrics
 
 
 def evaluate_wild(config_path, checkpoint):
@@ -73,7 +73,7 @@ def evaluate_wild(config_path, checkpoint):
     
     # 计算指标
     accuracy = compute_accuracy(features, labels)
-    tar_far, threshold = compute_tar_far(features, labels)
+    tar_far, threshold = compute_tar_at_far(features, labels)
     
     print(f"\n{'='*50}")
     print(f"野外数据集（C-Tai）评估结果")
