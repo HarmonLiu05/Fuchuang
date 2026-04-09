@@ -7,7 +7,7 @@ import sys
 import argparse
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -58,19 +58,19 @@ class ChimpFaceModel(nn.Module):
         self.backbone.unfreeze_all()
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, 
+def train_one_epoch(model, dataloader, criterion, optimizer,
                     accumulation_steps, scaler, device, epoch, config):
     """训练一个 epoch"""
     model.train()
     total_loss = 0
-    
+
     pbar = tqdm(dataloader, desc=f"Epoch {epoch+1} [Train]")
-    
+
     for batch_idx, (images, labels) in enumerate(pbar):
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
-        
-        with autocast(enabled=config['training']['precision'] == 16):
+
+        with torch.autocast(device_type='cuda', enabled=device.type == 'cuda' and config['training']['precision'] == 16):
             output, _ = model(images, labels)
             loss = criterion(output, labels) / accumulation_steps
         
@@ -149,7 +149,7 @@ def main():
     criterion = nn.CrossEntropyLoss(label_smoothing=config['model']['label_smoothing'])
     
     # 混合精度
-    scaler = GradScaler(enabled=config['training']['precision'] == 16)
+    scaler = GradScaler(device='cuda', enabled=config['training']['precision'] == 16)
     
     # 检查点目录
     checkpoint_dir = ensure_dir(config['training']['checkpoint_dir'])

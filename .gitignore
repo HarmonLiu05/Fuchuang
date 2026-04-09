@@ -1,0 +1,57 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# 编译文件
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.conda/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyTorch 检查点 (模型权重文件，体积大)
+checkpoints/
+test_checkpoints/
+*.pth
+*.pt
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+runs/
+events.out.tfevents.*
+
+# 临时文件
+*.tmp
+*.bak
+
+# 数据集 (不上传)
+data_CZoo/face_images/
+data_CTai/face_images/
+*.mp4
+*.avi
+
+# 标注文件保留 (体积小，同学需要)
+# *.txt 和 *.mat 保留
