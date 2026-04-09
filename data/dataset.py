@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
@@ -21,19 +22,19 @@ class ChimpanzeeDataset(Dataset):
         self.identity_to_idx = {name: i for i, name in enumerate(self.identities)}
         
     def _parse_annotations(self, ann_file, min_samples, specified_identities):
+        """解析 annotations_czoo.txt（多行格式）"""
         identity_samples = defaultdict(list)
         
-        with open(ann_file, 'r') as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) < 5:
-                    continue
-                
-                filename = parts[0]
-                identity = self._extract_identity_from_filename(filename)
-                
-                if identity:
-                    identity_samples[identity].append(filename)
+        with open(ann_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 使用正则表达式提取所有 Filename 和 Name
+        filenames = re.findall(r'Filename\s+(\S+)', content)
+        names = re.findall(r'Name\s+([A-Za-z]+)\s+Age', content)
+        
+        # 配对文件名和姓名
+        for filename, name in zip(filenames, names):
+            identity_samples[name].append(filename)
         
         if specified_identities:
             self.identities = specified_identities
