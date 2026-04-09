@@ -1,7 +1,7 @@
 data:
   root_dir: "../chimpanzee_faces/datasets_cropped_chimpanzee_faces"
   annotation_file: "data_CZoo/annotations_czoo.txt"
-  image_dir: "data_CZoo/images"
+  image_dir: "data_CZoo/face_images"
   image_size: 112
   num_workers: 0
   train_split: 0.8
