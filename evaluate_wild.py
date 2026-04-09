@@ -1,5 +1,6 @@
 """
 野外数据集评估：评估模型在 C-Tai（野生环境）数据集上的泛化能力
+使用 C-Zoo 全量数据作为底库 (Gallery)，C-Tai 作为查询集 (Query)。
 """
 import os
 import sys
@@ -10,12 +11,21 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from data.dataset import ChimpanzeeDataset, get_val_transform
-from utils.utils import load_config, set_seed
-from models.backbone import ResNet50Backbone
-from models.bottleneck import Bottleneck
-from models.arcface import ArcFace
-from utils.metrics import compute_accuracy, compute_tar_at_far, compute_all_metrics
+from data.dataset import ChimpanzeeDataset
+from utils.utils import load_config
+from utils.metrics import compute_rank1_accuracy, compute_tar_at_far
+
+
+@torch.no_grad()
+def extract_features(model, dataloader, device):
+    features, labels = [], []
+    for images, lbls in tqdm(dataloader, desc="提取特征", leave=False):
+        images = images.to(device, non_blocking=True)
+        feats = model.backbone(images)
+        feats = model.bottleneck(feats)
+        features.append(feats.cpu())
+        labels.append(lbls)
+    return torch.cat(features), torch.cat(labels)
 
 
 def evaluate_wild(config_path, checkpoint):
@@ -23,7 +33,7 @@ def evaluate_wild(config_path, checkpoint):
     config = load_config(config_path)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 加载模型 - 用 train.py 里的 ChimpFaceModel
+    # 1. 加载模型
     from train import ChimpFaceModel
     model = ChimpFaceModel(config, num_identities=24)
     model = model.to(device)
@@ -33,64 +43,68 @@ def evaluate_wild(config_path, checkpoint):
         model.load_state_dict(checkpoint_data['model_state_dict'])
     else:
         model.load_state_dict(checkpoint_data)
-    
-    backbone = model.backbone
-    bottleneck = model.bottleneck
-    backbone.eval()
-    bottleneck.eval()
-    
-    # 创建野外数据集
+    model.eval()
+
+    # 2. 准备底库 Gallery (C-Zoo 全量数据)
+    print("=> 正在加载底库数据 (C-Zoo)...")
+    gallery_dataset = ChimpanzeeDataset(
+        root_dir=config['data']['root_dir'],
+        annotation_file='data_CZoo/annotations_czoo.txt',
+        image_dir='data_CZoo',
+        min_samples_per_identity=1
+    )
+    gallery_loader = DataLoader(gallery_dataset, batch_size=64, shuffle=False, num_workers=4, pin_memory=True)
+    gallery_features, gallery_labels = extract_features(model, gallery_loader, device)
+    identity_map = {name: i for i, name in enumerate(gallery_dataset.identities)}
+    print(f"底库加载完成：{len(gallery_dataset)} 样本, {len(gallery_dataset.identities)} 个个体")
+
+    # 3. 准备查询集 Query (C-Tai 数据)
+    print("=> 正在加载查询数据 (C-Tai)...")
     wild_dataset = ChimpanzeeDataset(
         root_dir=config['data']['root_dir'],
-        annotation_file=config['data'].get('wild_annotation_file', 'data_CTai/annotations_ctai.txt'),
-        image_dir=config['data'].get('wild_image_dir', 'data_CTai'),
-        min_samples_per_identity=config['data'].get('min_samples_per_identity', 10)
+        annotation_file='data_CTai/annotations_ctai.txt',
+        image_dir='data_CTai',
+        min_samples_per_identity=1
     )
     
-    print(f"野外数据集: {len(wild_dataset.identities)} 个个体, {len(wild_dataset)} 张图片")
-    print(f"个体列表: {wild_dataset.identities}")
-    
-    wild_loader = DataLoader(
-        wild_dataset,
-        batch_size=config['training']['batch_size'],
-        shuffle=False,
-        num_workers=config['data'].get('num_workers', 4),
-        pin_memory=torch.cuda.is_available()
-    )
-    
-    # 特征提取
-    features, labels = [], []
-    pbar = tqdm(wild_loader, desc="提取特征")
-    with torch.no_grad():
-        for images, lbls in pbar:
-            images = images.to(device, non_blocking=True)
-            feats = backbone(images)
-            feats = bottleneck(feats)
-            features.append(feats.cpu())
-            labels.append(lbls)
-    
-    features = torch.cat(features)
-    labels = torch.cat(labels)
-    
-    # 计算指标
-    accuracy = compute_accuracy(features, labels)
-    tar_far, threshold = compute_tar_at_far(features, labels)
-    
-    print(f"\n{'='*50}")
-    print(f"野外数据集（C-Tai）评估结果")
-    print(f"{'='*50}")
-    print(f"Accuracy (Rank-1): {accuracy:.4f}")
-    print(f"TAR@FAR=0.1%:      {tar_far:.4f}")
-    print(f"Threshold:         {threshold:.4f}")
-    print(f"{'='*50}")
-    
-    return accuracy, tar_far
+    # 转换标签：将 C-Tai 的标签映射到 C-Zoo 的标签 ID
+    valid_indices = []
+    query_labels = []
+    for i in range(len(wild_dataset)):
+        name = wild_dataset.samples[i]['identity']
+        if name in identity_map:
+            valid_indices.append(i)
+            query_labels.append(identity_map[name])
 
+    from torch.utils.data import Subset
+    query_subset = Subset(wild_dataset, valid_indices)
+    query_loader = DataLoader(query_subset, batch_size=64, shuffle=False, num_workers=4, pin_memory=True)
+    
+    if len(query_subset) == 0:
+        print("Error: No matching identities between C-Tai and C-Zoo.")
+        return
+
+    query_features, _ = extract_features(model, query_loader, device)
+    query_labels = torch.tensor(query_labels)
+    print(f"查询集加载完成：{len(query_subset)} 样本（已对齐到底库 ID）")
+
+    # 4. 计算指标
+    accuracy = compute_rank1_accuracy(query_features, query_labels, gallery_features, gallery_labels)
+    
+    # 计算 TAR@FAR (Query 内部一致性)
+    tar_at_far, threshold = compute_tar_at_far(query_features, query_labels)
+
+    print(f"\n{'='*50}")
+    print(f"野外数据集（C-Tai）识别评估结果")
+    print(f"{'='*50}")
+    print(f"Rank-1 Accuracy (vs 训练集): {accuracy:.4f}")
+    print(f"TAR@FAR=0.1% (Query 内部):  {tar_at_far:.4f}")
+    print(f"Threshold:                  {threshold:.4f}")
+    print(f"{'='*50}")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='野外数据集评估')
-    parser.add_argument('--config', default='configs/config_vast.yaml', help='配置文件路径')
-    parser.add_argument('--checkpoint', required=True, help='模型权重路径')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', default='configs/config_vast.yaml')
+    parser.add_argument('--checkpoint', required=True)
     args = parser.parse_args()
-    
     evaluate_wild(args.config, args.checkpoint)
