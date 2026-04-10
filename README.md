@@ -1,42 +1,42 @@
-# 🦍 大猩猩个体识别系统 (Chimpanzee ArcFace)
+# 🐢 龟类个体识别系统 (Turtle ArcFace)
 
-基于 ResNet50 + ArcFace 的大猩猩面部个体识别模型，支持本地 GPU 训练和评估。
+基于 ResNet101 + ArcFace 的龟类头部个体识别模型，支持 Optuna 超参数自动优化。
 
 ## 功能
 
-- ✅ **个体识别**：输入大猩猩面部图像，输出个体 ID
+- ✅ **个体识别**：输入龟类头部图像，输出个体 ID
+- ✅ **Optuna 超参数优化**：自动搜索最佳学习率、batch size、dropout 等
 - ✅ **混合精度训练**：支持 FP16，节省显存
 - ✅ **分阶段训练**：先冻结 backbone，后微调整体
 - ✅ **数据增强**：翻转、仿射、颜色抖动、高斯模糊、随机擦除
 - ✅ **评估指标**：Accuracy、TAR@FAR、Rank-1
-- ✅ **开集/闭集识别**：支持未知个体检测
+- ✅ **多 Backbone 支持**：ResNet50 / ResNet101
+- ✅ **多层 MLP Bottleneck**：增强非线性表达能力
 
 ## 项目结构
 
 ```
 chimpanzee_arcface/
-├── configs/                    # 配置文件
-│   ├── config_local.yaml      # 本地训练配置
-│   ├── config_autodl.yaml     # AutoDL 配置
-│   └── test_config.yaml       # 测试配置
+├── configs/
+│   ├── config_turtle.yaml       # 龟类训练配置
+│   └── config_optuna.yaml       # Optuna 优化配置
 ├── data/
-│   ├── dataset.py             # ChimpanzeeDataset 类
-│   └── prepare_data.py        # 数据预处理和划分
+│   ├── dataset.py               # 数据增强函数
+│   ├── turtle_dataset.py        # COCO 格式数据集加载器
+│   └── prepare_turtle_data.py   # 数据准备函数
 ├── models/
-│   ├── backbone.py            # ResNet50 backbone
-│   ├── bottleneck.py          # 512 维瓶颈层
-│   └── arcface.py             # ArcFace Head
+│   ├── backbone.py              # ResNet50/101 backbone
+│   ├── bottleneck.py            # 多层 MLP 瓶颈层
+│   ├── arcface.py               # ArcFace Head
+│   └── se_block.py              # SE-Block 注意力模块
 ├── utils/
-│   ├── metrics.py             # 评估指标计算
-│   └── utils.py               # 工具函数
-├── tests/
-│   ├── test_dataset.py        # 数据集测试
-│   ├── test_models.py         # 模型测试
-│   └── test_metrics.py        # 评估指标测试
-├── train.py                   # 训练脚本
-├── evaluate.py                # 评估脚本
-├── inference.py               # 推理脚本
-├── requirements.txt           # 依赖
+│   ├── metrics.py               # 评估指标计算
+│   └── utils.py                 # 工具函数
+├── optimize.py                  # Optuna 超参数优化脚本
+├── train_turtle.py              # 龟类训练脚本
+├── evaluate.py                  # 评估脚本
+├── inference.py                 # 推理脚本
+├── requirements.txt             # 依赖
 └── README.md
 ```
 
@@ -50,48 +50,74 @@ pip install -r requirements.txt
 
 ### 2. 准备数据集
 
-下载 [Chimpanzee Faces 数据集](https://github.com/KordingLab/PrimateFace)，放到项目上级目录：
-
-```
-fuchuang/
-├── chimpanzee_faces/           # 数据集
-│   └── datasets_cropped_chimpanzee_faces/
-│       └── data_CZoo/
-└── chimpanzee_arcface/         # 本项目
-```
-
-### 3. 训练模型
+龟类数据集已独立仓库：[turtlehead-dataset](https://github.com/HarmonLiu05/turtlehead-dataset)
 
 ```bash
-python train.py --config configs/config_local.yaml
+git clone https://github.com/HarmonLiu05/turtlehead-dataset.git
 ```
 
-### 4. 评估模型
+### 3. 训练模型（手动配置）
 
 ```bash
-python evaluate.py --checkpoint checkpoints/best_model.pth
+# 编辑 configs/config_turtle.yaml 修改参数后运行
+python train_turtle.py --config configs/config_turtle.yaml
 ```
 
-### 5. 推理识别
+### 4. Optuna 自动优化（推荐）
 
 ```bash
-# 闭集识别 (已知个体)
-python inference.py --checkpoint checkpoints/best_model.pth --image chimp.jpg
+# 自动搜索 50 组超参数组合
+python optimize.py --config configs/config_optuna.yaml --n-trials 50
 
-# 开集识别 (未知个体输出 "Unknown")
-python inference.py --checkpoint checkpoints/best_model.pth --image chimp.jpg --open_set --threshold 0.5
+# 查看最佳参数
+cat results/optuna_study/best_params.yaml
+
+# 可视化优化历史
+pip install optuna-dashboard
+optuna-dashboard sqlite:///results/optuna_study/study.db
+# 浏览器打开 http://localhost:8080
 ```
+
+### 5. 评估模型
+
+```bash
+python evaluate.py --checkpoint checkpoints_turtle/best_model.pth --config configs/config_turtle.yaml
+```
+
+## 实验结果
+
+### 数据集
+
+| 数据集 | 个体数 | 训练图 | 测试图 | 时间跨度 |
+|--------|--------|--------|--------|---------|
+| **dataset_D_ge3years_count** | 107 | 2,620 | 1,194 | ≥3 年 |
+| dataset_E_ge5years_count | 38 | 966 | 438 | ≥5 年 |
+| dataset_F_ge7years_count | 10 | 326 | 147 | ≥7 年 |
+
+### 实验对比（dataset_D）
+
+| 实验 | batch | 数据增强 | GPU-Util | Test Accuracy | 说明 |
+|------|-------|---------|----------|---------------|------|
+| **实验 1** | 16 | 全开 | 59% | **86.61%** | 🥇 最佳基线 |
+| **实验 3** | 128 | 适中 | 100% | **84.63%** | GPU 跑满但精度下降 |
+| **实验 2** | 128 | 精简 | 100% | **83.94%** | 增强太少导致过拟合 |
+
+> 📝 Optuna 优化进行中，目标 ≥ 88%
 
 ## 模型架构
 
 ```
-输入图像 (112×112×3)
+输入图像 (224×224×3)
     ↓
-ResNet50 Backbone (ImageNet 预训练)
+ResNet101 Backbone (ImageNet 预训练)
     ↓
-Bottleneck: Linear(2048→512) + BatchNorm + Dropout(0.4) + L2 归一化
+SE-Block (可选)
     ↓
-ArcFace Head: s=30.0, m=0.35, 24 分类
+AdaptiveAvgPool(7×7) → 2048 维
+    ↓
+多层 MLP Bottleneck: 2048→1024→512 + BN + ReLU + Dropout + L2 归一化
+    ↓
+ArcFace Head: s=30.0, m=0.4, 107 分类
     ↓
 输出个体 ID
 ```
@@ -100,36 +126,31 @@ ArcFace Head: s=30.0, m=0.35, 24 分类
 
 | 阶段 | Epoch | 训练内容 | 学习率 |
 |------|-------|---------|--------|
-| 阶段 1 | 1-10 | backbone.layer4 + bottleneck + arcface | backbone: 1e-4, 其他: 1e-3 |
+| 阶段 1 | 1-10 | backbone.layer4+ + bottleneck + arcface | backbone: 1e-4, 其他: 1e-3 |
 | 阶段 2 | 11-30 | 全部参数微调 | 余弦衰减 |
 
-## 评估结果 (24 个个体)
+## Optuna 搜索空间
 
-基于 7:3 训练验证集划分，闭集识别结果：
-
-| 指标 | 结果 | 说明 |
-|------|------|------|
-| **Accuracy (Rank-1)** | **91.7%** | 预测最像的个体，猜对的概率 |
-| **TAR@FAR=0.1%** | **62.0%** | 误识率 0.1% 时的真阳性率 |
-| **最佳 Threshold** | **0.59** | 判定为同个体的相似度阈值 |
-
-> 📝 **注意**：当前结果为初步实验，使用闭集评估（所有测试个体均在训练集中出现过）。开集识别能力正在优化中。
-
-## 当前状态
-
-- ✅ 基础模型训练完成（24 个个体，91.7% Accuracy）
-- ✅ 配置文件系统（YAML）
-- ✅ 分阶段训练策略
-- 🔄 开集识别优化中（Unknown 个体检测）
-- 📋 待优化：跨时间域泛化能力（赛题核心要求）
+| 参数 | 搜索范围 |
+|------|---------|
+| backbone | resnet50, resnet101 |
+| base_lr | 1e-4 ~ 1e-2 |
+| backbone_lr | 1e-5 ~ 1e-3 |
+| batch_size | 64, 128, 256 |
+| dropout | 0.2 ~ 0.6 |
+| arcface_m | 0.3 ~ 0.5 |
+| arcface_s | 25.0 ~ 35.0 |
+| weight_decay | 1e-5 ~ 1e-4 |
+| freeze_until_layer | 0 ~ 5 |
+| use_se_block | true, false |
 
 ## 数据集
 
-- **名称**: Chimpanzee Faces (C-Zoo)
-- **来源**: [PrimateFace](https://github.com/KordingLab/PrimateFace)
-- **个体数**: 24 个
-- **图片数**: 2109 张
-- **划分**: 训练集 1677 张，验证集 432 张
+- **名称**: Turtle Head Dataset
+- **个体数**: 最高 107 个（dataset_D）
+- **图片数**: 最高 3,814 张
+- **格式**: COCO JSON 标注
+- **来源**: [turtlehead-dataset](https://github.com/HarmonLiu05/turtlehead-dataset)
 
 ## 依赖
 
@@ -143,6 +164,8 @@ tqdm>=4.65.0
 matplotlib>=3.7.0
 scikit-learn>=1.2.0
 faiss-cpu>=1.7.0
+optuna>=3.0.0
+kaleido>=0.2.1
 ```
 
 ## License
