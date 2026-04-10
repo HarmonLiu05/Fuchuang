@@ -31,8 +31,11 @@ class TurtleDataset(Dataset):
         json_path = os.path.join(root_dir, splits_dir, dataset_name, json_file)
         
         # 加载COCO标注
-        with open(json_path, 'r', encoding='utf-8') as f:
-            coco_data = json.load(f)
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                coco_data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"无法加载COCO标注文件 {json_path}: {e}")
         
         # 解析images数组
         self.image_list = []
@@ -52,8 +55,10 @@ class TurtleDataset(Dataset):
             image_path = image_info['path']
             # path格式: images/t007/xxx.JPG，个体ID是第二级目录
             path_parts = image_path.replace('\\', '/').split('/')
-            identity_id = path_parts[1] if len(path_parts) > 1 else path_parts[0]
-            
+            if len(path_parts) < 2:
+                raise ValueError(f"路径格式错误，无法提取个体ID: {image_path}")
+            identity_id = path_parts[1]
+
             identity_counts[identity_id] = identity_counts.get(identity_id, 0) + 1
         
         # 过滤：只保留图片数 >= min_samples 的个体
@@ -68,7 +73,9 @@ class TurtleDataset(Dataset):
             image_path = image_info['path']
             # path格式: images/t007/xxx.JPG，个体ID是第二级目录
             path_parts = image_path.replace('\\', '/').split('/')
-            identity_id = path_parts[1] if len(path_parts) > 1 else path_parts[0]
+            if len(path_parts) < 2:
+                raise ValueError(f"路径格式错误，无法提取个体ID: {image_path}")
+            identity_id = path_parts[1]
             
             # 跳过图片数不足的个体
             if identity_id not in valid_identities:
@@ -109,14 +116,17 @@ class TurtleDataset(Dataset):
     
     def __getitem__(self, idx):
         sample = self.image_list[idx]
-        
+
         # 读取图片
-        image = Image.open(sample['path']).convert('RGB')
-        
+        try:
+            image = Image.open(sample['path']).convert('RGB')
+        except (FileNotFoundError, IOError) as e:
+            raise RuntimeError(f"无法加载图片 {sample['path']}: {e}")
+
         # 应用transform
         if self.transform:
             image = self.transform(image)
-        
+
         return image, sample['label']
     
     def get_identity_list(self):
