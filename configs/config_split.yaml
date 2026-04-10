@@ -16,7 +16,7 @@ model:
   label_smoothing: 0.1
 
 training:
-  batch_size: 4
+  batch_size: 8
   accumulation_steps: 8
   epochs: 30
   freeze_until_epoch: 10

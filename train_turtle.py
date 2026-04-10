@@ -11,9 +11,10 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from models.backbone import ResNet50Backbone
+from models.backbone import ResNetBackbone
 from models.bottleneck import Bottleneck
 from models.arcface import ArcFace
+from models.se_block import add_se_to_resnet_layer
 from data.prepare_turtle_data import prepare_turtle_dataloaders
 from data.dataset import get_train_transform, get_val_transform
 from utils.utils import load_config, set_seed, get_device, ensure_dir
@@ -24,14 +25,27 @@ class TurtleFaceModel(nn.Module):
     def __init__(self, config, num_identities):
         super().__init__()
         model_cfg = config['model']
-        self.backbone = ResNet50Backbone(
-            pretrained=model_cfg['pretrained'],
-            freeze_until_layer=3
-        )
+        
+        # 支持多种 backbone
+        backbone_name = model_cfg.get('backbone', 'resnet50')
+        if backbone_name.startswith('resnet'):
+            self.backbone = ResNetBackbone(
+                pretrained=model_cfg['pretrained'],
+                model_name=backbone_name,
+                freeze_until_layer=model_cfg.get('freeze_until_layer', 3)
+            )
+        else:
+            raise ValueError(f"Unsupported backbone: {backbone_name}")
+        
+        # 可选：添加 SE-Block
+        if model_cfg.get('use_se_block', False):
+            add_se_to_resnet_layer(self.backbone.layer4, reduction=16)
+        
         self.bottleneck = Bottleneck(
             in_features=2048,
             bottleneck_dim=model_cfg['bottleneck_dim'],
-            dropout=model_cfg['dropout']
+            dropout=model_cfg['dropout'],
+            use_mlp=model_cfg.get('use_mlp_bottleneck', True)
         )
         self.arcface = ArcFace(
             in_features=model_cfg['bottleneck_dim'],

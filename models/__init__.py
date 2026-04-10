@@ -1,5 +1,6 @@
-from .backbone import ResNet50Backbone
+from .backbone import ResNetBackbone
 from .bottleneck import Bottleneck
 from .arcface import ArcFace
+from .se_block import SEBlock, add_se_to_resnet_layer
 
-__all__ = ['ResNet50Backbone', 'Bottleneck', 'ArcFace']
+__all__ = ['ResNetBackbone', 'Bottleneck', 'ArcFace', 'SEBlock', 'add_se_to_resnet_layer']

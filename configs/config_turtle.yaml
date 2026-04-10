@@ -4,21 +4,23 @@ data:
   dataset_name: "dataset_D_ge3years_count"  # 可切换为 A~F 任意一个
   train_json: "train.json"
   test_json: "test.json"
-  image_size: 112
+  image_size: 224  # 提升到 224×224（原来是 112）
   num_workers: 0
   min_samples_per_identity: 5
 
 model:
-  backbone: resnet50
+  backbone: resnet101  # 升级到 ResNet101
   pretrained: true
   bottleneck_dim: 512
+  use_mlp_bottleneck: true  # 使用多层 MLP
   dropout: 0.4
   arcface_s: 30.0
-  arcface_m: 0.35
+  arcface_m: 0.4
+  use_se_block: false  # 可选：true 启用 SE-Block 注意力
   label_smoothing: 0.1
 
 training:
-  batch_size: 64
+  batch_size: 16
   accumulation_steps: 4
   epochs: 30
   freeze_until_epoch: 10
