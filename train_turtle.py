@@ -7,7 +7,6 @@ import sys
 import argparse
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -21,7 +20,7 @@ from utils.utils import load_config, set_seed, get_device, ensure_dir
 from utils.metrics import compute_all_metrics
 
 
-class ChimpFaceModel(nn.Module):
+class TurtleFaceModel(nn.Module):
     def __init__(self, config, num_identities):
         super().__init__()
         model_cfg = config['model']
@@ -84,7 +83,7 @@ def main():
     print(f"测试集: {len(test_loader.dataset)} 样本")
 
     # 模型、优化器、调度器
-    model = ChimpFaceModel(config, num_identities).to(device)
+    model = TurtleFaceModel(config, num_identities).to(device)
     optimizer = torch.optim.Adam([
         {'params': model.backbone.layer4.parameters(), 'lr': config['training']['backbone_lr']},
         {'params': model.bottleneck.parameters(), 'lr': config['training']['base_lr']},
