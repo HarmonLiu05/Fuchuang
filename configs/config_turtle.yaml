@@ -1,7 +1,7 @@
 data:
   root_dir: "E:/fuchuang/turtlehead-dataset/Turtel_dataset"
   splits_dir: "dataset_splits"
-  dataset_name: "dataset_E_ge5years_count"
+  dataset_name: "dataset_D_ge3years_count"  # 可切换为 A~F 任意一个
   train_json: "train.json"
   test_json: "test.json"
   image_size: 112
@@ -18,7 +18,7 @@ model:
   label_smoothing: 0.1
 
 training:
-  batch_size: 8
+  batch_size: 64
   accumulation_steps: 4
   epochs: 30
   freeze_until_epoch: 10
