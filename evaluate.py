@@ -12,7 +12,7 @@ from tqdm import tqdm
 sys.path.insert(0, os.path.dirname(__file__))
 
 from train import ChimpFaceModel
-from utils.metrics import compute_all_metrics
+from utils.metrics import compute_all_metrics, compute_pred_accuracy
 from utils.utils import load_config, get_device
 
 
@@ -34,30 +34,38 @@ def evaluate_model(model, dataloader, device):
     model.eval()
     features_list = []
     labels_list = []
+    ids_list = []
 
     print("提取特征...")
     for images, labels in tqdm(dataloader, desc="Evaluating"):
         images = images.to(device, non_blocking=True)
+        labels = labels.to(device)
         feats = model.backbone(images)
         feats = model.bottleneck(feats)
+        logits = model.arcface(feats, labels)
         features_list.append(feats.cpu())
         labels_list.append(labels)
+        pred = torch.argmax(logits, dim=1)
+        ids_list.append(pred.cpu())
 
     features = torch.cat(features_list, dim=0)
     labels = torch.cat(labels_list, dim=0)
+    ids = torch.cat(ids_list, dim=0)
 
     print(f"\n特征矩阵: {features.shape}")
     print(f"标签数量: {labels.shape[0]}")
 
     print("\n计算评估指标...")
     metrics = compute_all_metrics(features, labels)
+    metrics['accuracy0'] = compute_pred_accuracy(ids, labels)
 
     print("\n" + "="*50)
     print("评估结果")
     print("="*50)
-    print(f"Accuracy (Rank-1): {metrics['accuracy']:.4f}")
-    print(f"TAR@FAR=0.1%:      {metrics['tar_at_far_0.1']:.4f}")
-    print(f"Threshold:         {metrics['threshold']:.4f}")
+    print(f"Accuracy (Rank-1):     {metrics['accuracy']:.4f}")
+    print(f"Accuracy0 (Direct):    {metrics['accuracy0']:.4f}")
+    print(f"TAR@FAR=0.1%:          {metrics['tar_at_far_0.1']:.4f}")
+    print(f"Threshold:             {metrics['threshold']:.4f}")
     print("="*50)
 
     return metrics

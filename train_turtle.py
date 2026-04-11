@@ -18,7 +18,7 @@ from models.se_block import add_se_to_resnet_layer
 from data.prepare_turtle_data import prepare_turtle_dataloaders
 from data.dataset import get_train_transform, get_val_transform
 from utils.utils import load_config, set_seed, get_device, ensure_dir
-from utils.metrics import compute_all_metrics
+from utils.metrics import compute_all_metrics, compute_pred_accuracy
 
 
 class TurtleFaceModel(nn.Module):
@@ -67,16 +67,24 @@ class TurtleFaceModel(nn.Module):
 @torch.no_grad()
 def evaluate(model, dataloader, device):
     model.eval()
-    features_list, labels_list = [], []
+    features_list, labels_list, ids_list = [], [], []
     for images, labels in tqdm(dataloader, desc="Evaluating"):
         images = images.to(device, non_blocking=True)
+        labels = labels.to(device)
         feats = model.backbone(images)
         feats = model.bottleneck(feats)
+        logits = model.arcface(feats, labels)
         features_list.append(feats.cpu())
         labels_list.append(labels)
+        pred = torch.argmax(logits, dim=1)
+        ids_list.append(pred.cpu())
     features = torch.cat(features_list, dim=0)
     labels = torch.cat(labels_list, dim=0)
-    return compute_all_metrics(features, labels)
+    ids = torch.cat(ids_list, dim=0)
+    
+    metrics = compute_all_metrics(features, labels)
+    metrics['accuracy0'] = compute_pred_accuracy(ids, labels)
+    return metrics
 
 
 def main():
@@ -115,6 +123,7 @@ def main():
     ensure_dir(checkpoint_dir)
 
     best_acc = 0.0
+    best_acc0 = 0.0
     accumulation_steps = config['training']['accumulation_steps']
 
     print(f"\n开始训练: {config['training']['epochs']} epochs")
@@ -150,21 +159,23 @@ def main():
 
         avg_loss = total_loss / len(train_loader)
         acc = metrics['accuracy']
-        print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, "
+        acc0 = metrics['accuracy0']
+        print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, Acc0={acc0:.4f}, "
               f"LR={scheduler.get_last_lr()[0]:.6f}")
 
-        # === 保存最佳模型 ===
-        if acc > best_acc:
-            best_acc = acc
+        # === 保存最佳模型（基于 Accuracy0） ===
+        if acc0 > best_acc0:
+            best_acc0 = acc0
             checkpoint = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'accuracy': best_acc,
+                'accuracy': acc,
+                'accuracy0': acc0,
                 'config': config
             }
             torch.save(checkpoint, os.path.join(checkpoint_dir, 'best_model.pth'))
-            print(f"  ↳ 保存最佳模型! Acc={best_acc:.4f}")
+            print(f"  ↳ 保存最佳模型! Acc0={best_acc0:.4f}, Acc={acc:.4f}")
 
         # 阶段 2: 解冻 backbone
         if epoch + 1 == config['training'].get('freeze_until_epoch', 10):
@@ -172,7 +183,7 @@ def main():
             model.unfreeze_backbone()
             optimizer.param_groups[0]['lr'] = config['training']['base_lr'] * 0.1
 
-    print(f"\n训练完成! 最佳 Accuracy: {best_acc:.4f}")
+    print(f"\n训练完成! 最佳 Accuracy0: {best_acc0:.4f}, Accuracy: {best_acc:.4f}")
     print(f"模型保存在: {os.path.join(checkpoint_dir, 'best_model.pth')}")
 
 

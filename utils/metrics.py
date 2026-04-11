@@ -19,6 +19,15 @@ def compute_accuracy(similarity, labels):
     return float(accuracy)
 
 
+def compute_pred_accuracy(pred_ids: torch.Tensor, labels: torch.Tensor) -> float:
+    """
+    计算传统分类准确率（直接预测 ID 是否正确）。
+    """
+    pred_ids = pred_ids.view(-1).to(labels.device)
+    labels = labels.view(-1)
+    return (pred_ids == labels).float().mean().item()
+
+
 def compute_rank1_accuracy(query_features, query_labels, gallery_features, gallery_labels):
     """
     计算 Rank-1 识别率（Identification Accuracy）。
@@ -67,9 +76,10 @@ def compute_all_metrics(features, labels):
     similarity = torch.mm(features, features.t())
     accuracy = compute_accuracy(similarity, labels)
     tar_at_far, threshold = compute_tar_at_far(features, labels, target_far=0.001)
-    
+
     return {
         'accuracy': accuracy,
+        'accuracy0': None,  # 需要 logits 才能计算，在 evaluate 中单独计算
         'tar_at_far_0.1': tar_at_far,
         'threshold': threshold
     }
