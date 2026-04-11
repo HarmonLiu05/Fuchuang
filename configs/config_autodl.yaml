@@ -1,6 +1,0 @@
-# AutoDL 配置 - 覆盖训练参数
-training:
-  batch_size: 32
-  accumulation_steps: 1
-  epochs: 100
-  num_workers: 8
