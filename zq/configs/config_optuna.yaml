@@ -1,0 +1,68 @@
+# Optuna 超参数优化配置
+
+# 数据集配置
+data:
+  root_dir: "E:/fuchuang/turtlehead-dataset/Turtel_dataset"
+  splits_dir: "dataset_splits"
+  dataset_name: "dataset_D_ge3years_count"
+  train_json: "train.json"
+  test_json: "test.json"
+  image_size: 224  # 提升到 224×224
+  num_workers: 4
+  min_samples_per_identity: 5
+
+# 模型架构固定配置
+model:
+  backbone: "resnet101"  # 默认，Optuna 会覆盖
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true  # 使用多层 MLP
+  arcface_s: 30.0  # 默认，Optuna 会搜索
+  arcface_m: 0.4   # 默认，Optuna 会搜索
+  use_se_block: false  # 默认，Optuna 会搜索
+  dropout: 0.4  # 默认，Optuna 会搜索
+  freeze_until_layer: 5  # 默认，Optuna 会搜索
+
+# 训练固定配置
+training:
+  epochs_per_trial: 5  # 每个 trial 跑多少 epoch（快速评估）
+  accumulation_steps: 2
+  optimizer: Adam
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+  checkpoint_dir: "checkpoints_turtle_optuna"
+
+# 数据增强配置
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]
+
+# Optuna 配置
+optuna:
+  n_trials: 50
+  n_startup_trials: 10  # 前 10 个 trial 随机搜索
+  pruner: "median"  # median / percentile / hyperband
+  pruner_n_min_trials: 5
+  pruner_n_warmup_steps: 2  # 前 2 个 epoch 不 pruning
+  direction: "maximize"  # maximize accuracy
+  sampler: "tpe"  # TPE (Tree-structured Parzen Estimator)
+  storage: "sqlite:///results/optuna_study/study.db"
+  study_name: "turtle_optimization"
+
+# 结果输出
+output:
+  dir: "results/optuna_study"
+  save_best_params: true
+  plot_importance: true
+  plot_parallel_coordinate: true
+  plot_slice: true

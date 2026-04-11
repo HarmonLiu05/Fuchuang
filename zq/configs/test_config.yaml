@@ -1,0 +1,45 @@
+data:
+  root_dir: "../chimpanzee_faces/datasets_cropped_chimpanzee_faces"
+  annotation_file: "data_CZoo/annotations_czoo.txt"
+  image_dir: "data_CZoo"
+  image_size: 112
+  num_workers: 0
+  train_split: 0.8
+  min_samples_per_identity: 20
+
+model:
+  backbone: resnet50
+  pretrained: false
+  bottleneck_dim: 512
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  label_smoothing: 0.1
+
+training:
+  batch_size: 2
+  accumulation_steps: 2
+  epochs: 3
+  freeze_until_epoch: 10
+  optimizer: Adam
+  base_lr: 0.001
+  backbone_lr: 0.0001
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+  checkpoint_dir: "test_checkpoints"
+  log_interval: 1
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]

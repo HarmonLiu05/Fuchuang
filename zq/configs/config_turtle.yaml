@@ -1,11 +1,11 @@
 data:
-  root_dir: "/root/turtle1/archive"
+  root_dir: "E:/fuchuang/turtlehead-dataset/Turtel_dataset"
   splits_dir: "dataset_splits"
   dataset_name: "dataset_D_ge3years_count"  # 可切换为 A~F 任意一个
   train_json: "train.json"
   test_json: "test.json"
   image_size: 224  # 提升到 224×224（原来是 112）
-  num_workers: 8
+  num_workers: 0  # Windows 本地训练
   min_samples_per_identity: 5
 
 model:
