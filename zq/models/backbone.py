@@ -17,8 +17,11 @@ class ResNetBackbone(nn.Module):
         elif model_name == 'resnet101':
             weights = models.ResNet101_Weights.IMAGENET1K_V1 if pretrained else None
             resnet = models.resnet101(weights=weights)
+        elif model_name == 'resnet152':
+            weights = models.ResNet152_Weights.IMAGENET1K_V1 if pretrained else None
+            resnet = models.resnet152(weights=weights)
         else:
-            raise ValueError(f"Unsupported backbone: {model_name}. Use 'resnet50' or 'resnet101'.")
+            raise ValueError(f"Unsupported backbone: {model_name}. Use 'resnet50', 'resnet101', or 'resnet152'.")
 
         self.conv1 = resnet.conv1
         self.bn1 = resnet.bn1

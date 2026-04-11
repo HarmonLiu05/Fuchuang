@@ -16,7 +16,7 @@ def _to_numeric_time(value: Any) -> Optional[float]:
         text = value.strip()
         if not text:
             return None
-        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m", "%Y/%m", "%Y"):
+        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y:%m:%d", "%Y:%m:%d %H:%M:%S", "%Y-%m", "%Y/%m", "%Y"):
             try:
                 dt = datetime.strptime(text, fmt)
                 return float(dt.year) + (dt.timetuple().tm_yday - 1) / 366.0

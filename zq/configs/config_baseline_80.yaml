@@ -1,28 +1,28 @@
 data:
   root_dir: "/workspace/turtlehead-dataset/Turtel_dataset"
   splits_dir: "dataset_splits"
-  dataset_name: "dataset_D_ge3years_count"  # 可切换为 A~F 任意一个
+  dataset_name: "dataset_D_ge3years_count"
   train_json: "train.json"
   test_json: "test.json"
-  image_size: 224  # 提升到 224×224（原来是 112）
-  num_workers: 8  # Windows 本地训练
+  image_size: 224
+  num_workers: 8
   min_samples_per_identity: 5
 
 model:
-  backbone: resnet101  # 升级到 ResNet101
+  backbone: resnet101
   pretrained: true
   bottleneck_dim: 512
-  use_mlp_bottleneck: true  # 使用多层 MLP
+  use_mlp_bottleneck: true
   dropout: 0.4
   arcface_s: 30.0
   arcface_m: 0.35
-  use_se_block: false  # 可选：true 启用 SE-Block 注意力
+  use_se_block: false
   label_smoothing: 0.1
 
 training:
-  batch_size: 128
+  batch_size: 64
   accumulation_steps: 1
-  epochs: 200
+  epochs: 80  # 只训练到80轮
   freeze_until_epoch: 10
   optimizer: Adam
   base_lr: 0.001
@@ -33,11 +33,11 @@ training:
   precision: 16
   triplet_weight: 0.2
   triplet_margin: 0.3
-  triplet_start_epoch: 80        # 开始引入 Triplet
-  triplet_warmup_epochs: 20      # warmup 周期
-  use_time_weighted_triplet: true   # 是否启用时间加权 Triplet Loss
-  time_alpha: 0.3               # 时间权重系数（仅在 use_time_weighted_triplet=true 时生效）
-  max_time_gap: 10.0             # 最大时间跨度（年）
+  triplet_start_epoch: 80
+  triplet_warmup_epochs: 20
+  use_time_weighted_triplet: false
+  time_alpha: 0
+  max_time_gap: 10.0
   checkpoint_dir: "checkpoints_turtle"
   log_interval: 10
 
