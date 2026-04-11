@@ -75,13 +75,13 @@ def evaluate(model, dataloader, device):
         feats = model.bottleneck(feats)
         logits = model.arcface(feats, labels)
         features_list.append(feats.cpu())
-        labels_list.append(labels)
+        labels_list.append(labels.cpu())
         pred = torch.argmax(logits, dim=1)
         ids_list.append(pred.cpu())
     features = torch.cat(features_list, dim=0)
     labels = torch.cat(labels_list, dim=0)
     ids = torch.cat(ids_list, dim=0)
-    
+
     metrics = compute_all_metrics(features, labels)
     metrics['accuracy0'] = compute_pred_accuracy(ids, labels)
     return metrics
