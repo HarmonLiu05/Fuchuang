@@ -11,7 +11,6 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from train import ChimpFaceModel
 from utils.metrics import compute_all_metrics, compute_pred_accuracy
 from utils.utils import load_config, get_device
 
@@ -44,7 +43,7 @@ def evaluate_model(model, dataloader, device):
         feats = model.bottleneck(feats)
         logits = model.arcface(feats, labels)
         features_list.append(feats.cpu())
-        labels_list.append(labels)
+        labels_list.append(labels.cpu())
         pred = torch.argmax(logits, dim=1)
         ids_list.append(pred.cpu())
 
@@ -72,19 +71,14 @@ def evaluate_model(model, dataloader, device):
 
 
 def create_model(config, num_identities):
-    """根据配置创建模型（支持ChimpFaceModel和TurtleFaceModel）"""
-    # 尝试导入龟类模型
-    try:
-        from train_turtle import TurtleFaceModel
-        return TurtleFaceModel(config, num_identities)
-    except ImportError:
-        # 回退到黑猩猩模型
-        return ChimpFaceModel(config, num_identities)
+    """根据配置创建模型（支持TurtleFaceModel）"""
+    from train_turtle import TurtleFaceModel
+    return TurtleFaceModel(config, num_identities)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default='configs/config_local.yaml')
+    parser.add_argument('--config', type=str, default='configs/config_turtle.yaml')
     parser.add_argument('--checkpoint', type=str, required=True, help='模型检查点路径')
     args = parser.parse_args()
 
@@ -92,7 +86,21 @@ def main():
     device = get_device()
 
     print(f"加载检查点: {args.checkpoint}")
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+
+    # 优先使用 checkpoint 中的配置
+    if 'config' in checkpoint:
+        ckpt_config = checkpoint['config']
+        # 合并配置，保留 checkpoint 中的关键字段
+        config['model'].update({
+            'backbone': ckpt_config['model'].get('backbone', config['model'].get('backbone', 'resnet50')),
+            'bottleneck_dim': ckpt_config['model'].get('bottleneck_dim', config['model'].get('bottleneck_dim', 512)),
+            'use_mlp_bottleneck': ckpt_config['model'].get('use_mlp_bottleneck', False),
+            'use_se_block': ckpt_config['model'].get('use_se_block', False),
+            'freeze_until_layer': ckpt_config['model'].get('freeze_until_layer', 3),
+        })
+        config['data'] = ckpt_config.get('data', config.get('data', {}))
+        print(f"使用 checkpoint 中的配置: backbone={config['model']['backbone']}, bottleneck_dim={config['model']['bottleneck_dim']}")
 
     arcface_weight = checkpoint['model_state_dict']['arcface.weight']
     num_identities = arcface_weight.shape[0]
