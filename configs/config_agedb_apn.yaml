@@ -20,13 +20,13 @@ model:
   label_smoothing: 0.1
 
 training:
-  batch_size: 64
+  batch_size: 128
   accumulation_steps: 1
   epochs: 200
   freeze_until_epoch: 0
   optimizer: Adam
-  base_lr: 0.001
-  backbone_lr: 0.0001
+  base_lr: 0.0005
+  backbone_lr: 0.00005
   weight_decay: 0.0005
   scheduler: CosineAnnealingLR
   eta_min: 0.000001
