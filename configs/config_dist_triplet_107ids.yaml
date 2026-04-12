@@ -25,25 +25,26 @@ model:
 training:
   batch_size: 64
   accumulation_steps: 1
-  epochs: 200              # 总轮次200
-  freeze_until_epoch: 0    # 不冻结
+  epochs: 200
+  freeze_until_epoch: 0
   optimizer: Adam
-  base_lr: 0.001           # 与baseline保持一致
-  backbone_lr: 0.0001      # 与baseline保持一致
+  base_lr: 0.001
+  backbone_lr: 0.0001
   weight_decay: 0.0005
   scheduler: CosineAnnealingLR
   eta_min: 0.000001
   precision: 16
-  
-  # === 开启距离三元组损失 ===
+
+  # === 三元组损失配置（距离Batch-Hard）===
   triplet_weight: 0.2
   triplet_margin: 0.3
-  triplet_start_epoch: 0   # 会被代码动态覆盖，从checkpoint的下一轮开始
-  triplet_warmup_epochs: 10
-  
+  triplet_start_epoch: 80        # 与APN实验完全对齐：从80轮开始引入
+  triplet_warmup_epochs: 20      # 与APN实验完全对齐：warmup 20轮
+
+  # 损失函数选择
   use_time_weighted_triplet: false
-  use_temporal_apn_triplet: false  # 关闭时间APN
-  
+  use_temporal_apn_triplet: false  # 关闭时间APN，使用距离Batch-Hard
+
   checkpoint_dir: "/workspace/experiments-checkpoints/dist_triplet_107ids"
   log_interval: 10
 
