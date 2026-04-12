@@ -96,11 +96,16 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth --config confi
 
 ### 模型评估对比（dataset_D）
 
-| 模型 | Epoch | Triplet Loss | Rank-1 (Accuracy) | TAR@FAR=0.1% | Threshold | 说明 |
-|------|-------|--------------|-------------------|--------------|-----------|------|
-| **epoch200_resnet-101_triloss_83%.pth** | 200 | ✅ 启用 | **94.13%** | **79.77%** | 0.6496 | 🥇 最佳模型 |
-| best_model101_80epoch.pth | 80 | ❌ | 91.02% | 64.06% | 0.6016 | Baseline |
-| best_model1.pth | - | - | - | - | - | 待评估 |
+| 模型 | Epoch | Triplet Loss | Acc (直接预测) | Rank-1 (检索) | TAR@FAR=0.1% | Threshold | 说明 |
+|------|-------|--------------|----------------|---------------|--------------|-----------|------|
+| **epoch200_resnet-101_triloss_83%.pth** | 200 | ✅ 启用 | 85.84% | **94.13%** | **79.77%** | 0.6496 | 🥇 最佳模型 |
+| best_model101_80epoch.pth | 80 | ❌ | 64.77% | 91.02% | 64.06% | 0.6016 | Baseline |
+| best_model1.pth | - | - | - | - | - | - | 待评估 |
+
+**指标说明**：
+- **Acc (Accuracy)**: 直接预测准确率，ArcFace head 输出的 argmax 与真实标签比较
+- **Rank-1**: 检索第一正确率，基于特征向量相似度（余弦/欧氏距离）检索，最相似样本的标签是否正确
+- **TAR@FAR=0.1%**: 误识率 0.1% 时的真接受率
 
 > 💡 训练 200 轮 + Triplet Loss 的模型明显优于 80 轮 baseline，Rank-1 提升 **3.11%**，TAR@FAR=0.1% 提升 **15.71%**
 
