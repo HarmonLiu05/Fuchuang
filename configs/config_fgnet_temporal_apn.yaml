@@ -1,10 +1,10 @@
 # FGNET: 时间 APN 三元组 (Temporal-APN Triplet)
 data:
   dataset_type: fgnet
-  fgnet_root: "E:/fuchuang/FGNET/FGNET"
+  fgnet_root: "/workspace/fgnet-dataset"
   age_annotation_path: "age_annotations/kara2015_ageannotations/age_groundtruth.csv"
   image_size: 224
-  num_workers: 0
+  num_workers: 8
   min_samples_per_identity: 3
 
 model:

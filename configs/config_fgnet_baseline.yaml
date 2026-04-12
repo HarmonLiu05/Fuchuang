@@ -1,10 +1,10 @@
 # FGNET Baseline: 纯交叉熵
 data:
   dataset_type: fgnet
-  fgnet_root: "E:/fuchuang/FGNET/FGNET"
+  fgnet_root: "/workspace/fgnet-dataset"
   age_annotation_path: "age_annotations/kara2015_ageannotations/age_groundtruth.csv"
   image_size: 224
-  num_workers: 0
+  num_workers: 8
   min_samples_per_identity: 3
 
 model:
@@ -19,8 +19,8 @@ model:
   label_smoothing: 0.1
 
 training:
-  batch_size: 32
-  accumulation_steps: 1
+  batch_size: 8
+  accumulation_steps: 4
   epochs: 80                  # 只跑 80 轮,作为 Baseline
   freeze_until_epoch: 10
   optimizer: Adam
