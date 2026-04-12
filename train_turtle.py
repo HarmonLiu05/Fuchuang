@@ -120,22 +120,33 @@ class TurtleFaceModel(nn.Module):
 
 @torch.no_grad()
 def evaluate(model, dataloader, device):
+    # 评估时关闭 ArcFace margin，使用标准余弦相似度
+    original_margin = model.arcface.m
+    was_training = model.training
+    model.arcface.update_margin(0.0)
     model.eval()
-    features_list, labels_list, ids_list = [], [], []
-    for batch in tqdm(dataloader, desc="Evaluating"):
-        images, labels = batch[:2]
-        images = images.to(device, non_blocking=True)
-        labels = labels.to(device)
-        feats = model.backbone(images)
-        feats = model.bottleneck(feats)
-        logits = model.arcface(feats, labels)
-        features_list.append(feats.cpu())
-        labels_list.append(labels.cpu())
-        pred = torch.argmax(logits, dim=1)
-        ids_list.append(pred.cpu())
-    features = torch.cat(features_list, dim=0)
-    labels = torch.cat(labels_list, dim=0)
-    ids = torch.cat(ids_list, dim=0)
+
+    try:
+        features_list, labels_list, ids_list = [], [], []
+        for batch in tqdm(dataloader, desc="Evaluating"):
+            images, labels = batch[:2]
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device)
+            feats = model.backbone(images)
+            feats = model.bottleneck(feats)
+            logits = model.arcface(feats, labels)
+            features_list.append(feats.cpu())
+            labels_list.append(labels.cpu())
+            pred = torch.argmax(logits, dim=1)
+            ids_list.append(pred.cpu())
+        features = torch.cat(features_list, dim=0)
+        labels = torch.cat(labels_list, dim=0)
+        ids = torch.cat(ids_list, dim=0)
+    finally:
+        # 确保 margin 和模型状态始终恢复
+        model.arcface.update_margin(original_margin)
+        if was_training:
+            model.train()
 
     metrics = compute_all_metrics(features, labels)
     metrics['acc_direct'] = compute_pred_accuracy(ids, labels)
