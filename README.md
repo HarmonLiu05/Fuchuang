@@ -150,6 +150,27 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth \
 
 > *Acc=0.00% 为临时显示异常，实际 Rank-1 检索能力待 evaluate.py 验证
 
+### 🆕 双 Triplet 联合损失实验（设计阶段）
+
+**核心假设**：距离三元组和时间三元组可能学到**互补的特征能力**，同时使用是否比单独使用更好？
+
+| 实验 | 损失组合 | 权重分配 | 目的 |
+|------|---------|---------|------|
+| **A. 距离单 Triplet** | CE + 距离 Triplet | 0.2×距离 | 基线对比 |
+| **B. 时间单 Triplet** | CE + 时间 APN | 0.2×时间 | 当前最佳 |
+| **C. 双 Triplet（等权）** | CE + 距离 + 时间 | 0.1×距离 + 0.1×时间 | 验证互补效应 |
+| **D. 双 Triplet（高权）** | CE + 距离 + 时间 | 0.15×距离 + 0.15×时间 | 权重更高版本 |
+
+**预期分析**：
+- 若 **C/D > B** → 说明两种 Triplet 确实互补，联合训练更优
+- 若 **C/D = B** → 说明时间 Triplet 已经足够，距离是冗余的
+- 若 **C/D < B** → 说明两种 Triplet 互相干扰，不如单一损失
+
+**实现方案**：
+- 新增 `DualTripletLoss` 类，内部同时计算距离 Triplet + 时间 APN Triplet
+- 配置文件新增 `use_dual_triplet: true`，分别设置 `dist_triplet_weight` 和 `temporal_triplet_weight`
+- 训练脚本只需改动损失计算部分，其他逻辑不变
+
 ## 🚧 下一步目标
 
 ### 1. 在 100+ 个体上验证 APN 有效性

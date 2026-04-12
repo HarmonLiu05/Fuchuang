@@ -1,0 +1,61 @@
+# 107个体距离三元组实验：基于80epoch权重接续训练
+# 目的：在107个个体上测试距离三元组损失的效果
+
+data:
+  root_dir: "/workspace/turtlehead-dataset/Turtel_dataset"
+  splits_dir: "dataset_splits"
+  dataset_name: "dataset_D_ge3years_count"
+  train_json: "train.json"
+  test_json: "test.json"
+  image_size: 224
+  num_workers: 8
+  min_samples_per_identity: 5  # 保持5，保留107个个体
+
+model:
+  backbone: resnet101
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  use_se_block: false
+  label_smoothing: 0.1
+
+training:
+  batch_size: 64
+  accumulation_steps: 1
+  epochs: 200              # 总轮次200
+  freeze_until_epoch: 0    # 不冻结
+  optimizer: Adam
+  base_lr: 0.001           # 与baseline保持一致
+  backbone_lr: 0.0001      # 与baseline保持一致
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+  
+  # === 开启距离三元组损失 ===
+  triplet_weight: 0.2
+  triplet_margin: 0.3
+  triplet_start_epoch: 0   # 会被代码动态覆盖，从checkpoint的下一轮开始
+  triplet_warmup_epochs: 10
+  
+  use_time_weighted_triplet: false
+  use_temporal_apn_triplet: false  # 关闭时间APN
+  
+  checkpoint_dir: "/workspace/experiments-checkpoints/dist_triplet_107ids"
+  log_interval: 10
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]
