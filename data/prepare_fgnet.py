@@ -142,19 +142,23 @@ class FGNETDataset(Dataset):
         for img_info in self.image_list:
             individuals[img_info['identity_id']].append(img_info)
 
-        # 重新统计
-        if self.split == 'train':
-            self.image_list = []
-            for ind_id in sorted(individuals.keys()):
-                images = individuals[ind_id]
-                split_idx = max(1, int(len(images) * 0.7))
-                self.image_list.extend(images[:split_idx])
-        else:
-            self.image_list = []
-            for ind_id in sorted(individuals.keys()):
-                images = individuals[ind_id]
-                split_idx = max(1, int(len(images) * 0.7))
-                self.image_list.extend(images[split_idx:])
+        # 使用公共方法划分数据集
+        self.image_list = self._split_by_time(individuals)
+
+    def _split_by_time(self, individuals):
+        """按时间划分数据集的公共逻辑"""
+        result_list = []
+        for ind_id in sorted(individuals.keys()):
+            images = individuals[ind_id]
+            n = len(images)
+            split_idx = max(1, int(n * 0.7))
+
+            if self.split == 'train':
+                result_list.extend(images[:split_idx])
+            else:
+                result_list.extend(images[split_idx:])
+
+        return result_list
 
     def __len__(self):
         return len(self.image_list)
