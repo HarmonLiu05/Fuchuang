@@ -25,8 +25,8 @@ training:
   epochs: 200
   freeze_until_epoch: 0
   optimizer: Adam
-  base_lr: 0.0005
-  backbone_lr: 0.00005
+  base_lr: 0.002
+  backbone_lr: 0.0002
   weight_decay: 0.0005
   scheduler: CosineAnnealingLR
   eta_min: 0.000001
