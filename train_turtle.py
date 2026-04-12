@@ -349,18 +349,27 @@ def main():
             })
 
         # === 验证 ===
-        metrics = evaluate(model, test_loader, device)
+        is_last_epoch = (epoch + 1 == config['training']['epochs'])
         scheduler.step()
 
         avg_loss = total_loss / len(train_loader)
-        acc = metrics['accuracy']
-        acc_direct = metrics['acc_direct']
-        print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, Acc_direct={acc_direct:.4f}, "
-              f"TripletW={current_triplet_weight:.3f}, LR={scheduler.get_last_lr()[0]:.6f}")
 
-        # === 保存最佳模型（基于 Acc_direct） ===
-        if acc_direct > best_acc_direct:
-            best_acc_direct = acc_direct
+        if is_last_epoch:
+            # 只在最后一轮跑评估
+            metrics = evaluate(model, test_loader, device)
+            acc = metrics['accuracy']
+            acc_direct = metrics['acc_direct']
+            print(f"\n{'='*60}")
+            print(f"最终评估: Epoch {epoch+1}")
+            print(f"{'='*60}")
+            print(f"  Loss={avg_loss:.4f}")
+            print(f"  Acc (检索)={acc:.4f}")
+            print(f"  Acc_direct={acc_direct:.4f}")
+            print(f"  TripletW={current_triplet_weight:.3f}")
+            print(f"  LR={scheduler.get_last_lr()[0]:.6f}")
+            print(f"{'='*60}")
+
+            # 无条件保存最终模型
             checkpoint = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -370,8 +379,14 @@ def main():
                 'acc_direct': acc_direct,
                 'config': config
             }
-            torch.save(checkpoint, os.path.join(checkpoint_dir, 'best_model1.pth'))
-            print(f"  ↳ 保存最佳模型! Acc_direct={best_acc_direct:.4f}, Acc={acc:.4f}")
+            save_path = os.path.join(checkpoint_dir, 'best_model1.pth')
+            torch.save(checkpoint, save_path)
+            print(f"  ✓ 模型保存: {save_path}")
+            print(f"  最终 Acc_direct={acc_direct:.4f}, Acc={acc:.4f}")
+        else:
+            # 其他 epoch 只打印训练信息
+            print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, TripletW={current_triplet_weight:.3f}, "
+                  f"LR={scheduler.get_last_lr()[0]:.6f}")
 
         # 阶段 2: 解冻 backbone
         if epoch + 1 == config['training'].get('freeze_until_epoch', 10):
@@ -379,8 +394,11 @@ def main():
             model.unfreeze_backbone()
             update_optimizer_backbone_lrs(optimizer, config['training'])
 
-    print(f"\n训练完成! 最佳 Acc_direct: {best_acc_direct:.4f}, Acc: {best_acc:.4f}")
+    print(f"\n{'='*60}")
+    print(f"训练完成! 总共 {config['training']['epochs']} epochs")
+    print(f"{'='*60}")
     print(f"模型保存在: {os.path.join(checkpoint_dir, 'best_model1.pth')}")
+    print(f"{'='*60}")
 
 
 if __name__ == '__main__':
