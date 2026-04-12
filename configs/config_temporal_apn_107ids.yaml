@@ -1,0 +1,62 @@
+# 时间跨度感知 APN 三元组损失（107个个体，完整数据集）
+# 从 Baseline CE 80轮权重接续训练
+# Baseline权重: /workspace/Weight/checkpoints_baseline_80/best_model101_80epoch.pth
+
+data:
+  root_dir: "/workspace/turtlehead-dataset/Turtel_dataset"
+  splits_dir: "dataset_splits"
+  dataset_name: "dataset_D_ge3years_count"
+  train_json: "train.json"
+  test_json: "test.json"
+  image_size: 224
+  num_workers: 8
+  min_samples_per_identity: 5  # 107个个体（完整数据集）
+
+model:
+  backbone: resnet101
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  use_se_block: false
+  label_smoothing: 0.1
+
+training:
+  batch_size: 64
+  accumulation_steps: 1
+  epochs: 200
+  freeze_until_epoch: 0
+  optimizer: Adam
+  base_lr: 0.001
+  backbone_lr: 0.0001
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+
+  # === 三元组损失配置（时间APN）===
+  triplet_weight: 0.2
+  triplet_margin: 0.3
+  triplet_start_epoch: 80        # 从Baseline的80轮开始引入
+  triplet_warmup_epochs: 20      # warmup 20轮
+
+  # 损失函数选择
+  use_temporal_apn_triplet: true
+
+  checkpoint_dir: "/workspace/experiments-checkpoints/temporal_apn_107ids"
+  log_interval: 10
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]

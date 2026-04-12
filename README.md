@@ -160,22 +160,80 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth \
 - [ ] 对比 APN 在更大个体量级下的增益是否依然显著
 - [ ] 验证时间跨度选择策略是否在更多个体间具有泛化能力
 
-### 2. 迁移到人脸数据集
+### 2. 迁移到人脸跨年龄数据集
 
-将当前训练框架迁移到**人脸个体识别**任务，验证时间 APN 三元组在更广泛场景下的有效性：
+将当前训练框架迁移到**人脸个体识别**任务，验证时间 APN 三元组在跨年龄场景下的有效性。
 
-- [ ] 适配人脸数据集格式（如 VGGFace2、CASIA-WebFace、MS1M 等）
-- [ ] 将"拍摄时间"映射为"采集时间"，保留时间跨度选择逻辑
-- [ ] 训练并对比：人脸场景下 APN vs 距离三元组的性能差异
-- [ ] 探索跨物种泛化：龟类 → 人脸的特征学习是否可以互相迁移
+**目标数据集**（三个跨年龄人脸数据集）：
+
+| 数据集 | 人数 | 图片数 | 时间信息 | 说明 |
+|--------|------|--------|---------|------|
+| **CACD** | 2,000 | 163,446 | 拍摄年份 + 年龄 | 名人跨年龄数据集，时间跨度几十年 |
+| **FG-NET** | 82 | 1,002 | 拍摄年龄 (0-69岁) | 经典跨年龄数据集，每人 3-12 张 |
+| **AgeDB** | 570 | 16,488 | 年龄标注 | 跨年龄验证集，用于评估泛化能力 |
+
+**迁移需要做的改动**：
+
+#### 2.1 新增数据集适配层
+
+```
+data/
+├── prepare_cacd.py       # CACD 数据加载器（解析 celebrity2000_meta.mat）
+├── prepare_fgnets.py     # FG-NET 数据加载器（解析 Excel/CSV 年龄标注）
+└── prepare_agedb.py      # AgeDB 数据加载器（解析年龄标注文件）
+```
+
+每个适配层需要：
+- 解析原始标注文件，提取 `image_path`, `identity_id`, `capture_year`
+- 将年份映射为数值时间戳（格式与 `_to_numeric_time` 兼容）
+- 生成与龟类数据集相同格式的 `train.json` / `test.json`（COCO 格式）
+- 支持 `prepare_turtle_dataloaders` 的调用方式（统一接口）
+
+#### 2.2 训练脚本适配
+
+```python
+# train_turtle.py 新增数据集选择器
+if config['data'].get('dataset_type') == 'face':
+    from data.prepare_cacd import prepare_face_dataloaders
+    train_loader, test_loader, num_identities, train_dataset = prepare_face_dataloaders(config)
+else:
+    from data.prepare_turtle_data import prepare_turtle_dataloaders
+    train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(config)
+```
+
+**无需改动的部分**：
+- ✅ Temporal APN Triplet Loss（时间跨度逻辑通用）
+- ✅ Batch-Hard Triplet Loss（距离逻辑通用）
+- ✅ ResNet backbone（ImageNet 预训练对人脸有效）
+- ✅ ArcFace Head（本身就是为人脸识别设计的）
+
+**需要调整的部分**：
+- `min_samples_per_identity`：根据数据集调整（CACD 可设 5，FG-NET 设 3）
+- `batch_size`：CACD 数据量大，可增加到 128
+- `epochs`：CACD 可跑 100-150 轮（数据量大收敛快）
+- `num_workers`：根据数据量调整（CACD 设 12-16）
+
+#### 2.3 实验设计（每个数据集）
+
+| 实验 | 损失配置 | 说明 |
+|------|---------|------|
+| Baseline CE | 纯交叉熵 | 对照基准 |
+| 距离三元组 | CE + Batch-Hard Triplet | 通用度量学习 |
+| 时间 APN | CE + Temporal-APN Triplet | 跨年龄时间鲁棒性 |
+
+**预期收益**：
+- 验证时间 APN 在人脸场景是否同样有效
+- 对比龟类 vs 人脸场景下 APN 的增益差异
+- 探索跨物种（龟→人脸）迁移学习的可行性
 
 ## 损失函数对比
 
 | 损失类型 | Positive 选择 | Negative 选择 | 适用场景 |
 |---------|--------------|--------------|---------|
-| **Batch-Hard Triplet** | 同类中距离最远 | 异类中距离最近 | 通用度量学习 |
-| **Time-Weighted Triplet** | 同类中距离最远 | 异类中距离最近 + 时间加权 | 有时间信息的数据集 |
-| **Temporal APN Triplet** | 同类中**时间跨度最大** | 异类中**时间跨度最小** | 强调时间鲁棒性 |
+| **Batch-Hard Triplet** | 同类中特征距离最远 | 异类中特征距离最近 | 通用度量学习 |
+| **Temporal APN Triplet** | 同类中**时间跨度最大**（平局用距离最远） | 异类中**时间跨度最小**（平局用距离最近） | 强调时间/年龄鲁棒性 |
+
+> ⚠️ `Time-Weighted Triplet Loss` 已在实验中验证无效，已从代码库中移除。
 
 ## 模型架构
 
