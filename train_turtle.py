@@ -173,10 +173,19 @@ def main():
     
     # 时间APN会使用fallback机制（时间选不出时用距离选）
     # 是否使用 TimeAwareBatchSampler 由配置文件决定（默认为 False）
-    use_sampler = config['training'].get('use_time_aware_sampler', False)
-    train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(
-        config, return_time=use_time_info, use_time_aware_sampler=use_sampler
-    )
+    dataset_type = config['data'].get('dataset_type', 'turtle')
+    if dataset_type == 'agedb':
+        from data.prepare_agedb import prepare_agedb_dataloaders
+        train_loader, test_loader, num_identities, train_dataset = prepare_agedb_dataloaders(
+            config, return_time=True
+        )
+        print(">>> 使用 AgeDB 人脸数据集")
+    else:
+        use_sampler = config['training'].get('use_time_aware_sampler', False)
+        train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(
+            config, return_time=use_time_info, use_time_aware_sampler=use_sampler
+        )
+        print(">>> 使用龟类数据集")
     print(f"训练集: {len(train_dataset)} 样本")
     print(f"测试集: {len(test_loader.dataset)} 样本")
 
