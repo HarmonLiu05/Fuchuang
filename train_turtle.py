@@ -156,12 +156,15 @@ def main():
     print(f"配置文件: {args.config}")
 
     # 准备数据
-    use_time_info = (
-        config['training'].get('use_time_weighted_triplet', False) or
-        config['training'].get('use_temporal_apn_triplet', False)
-    )
+    use_time_weighted = config['training'].get('use_time_weighted_triplet', False)
+    use_temporal_apn = config['training'].get('use_temporal_apn_triplet', False)
+    use_time_info = use_time_weighted or use_temporal_apn
+    
+    # 时间APN会使用fallback机制（时间选不出时用距离选）
+    # 是否使用 TimeAwareBatchSampler 由配置文件决定（默认为 False）
+    use_sampler = config['training'].get('use_time_aware_sampler', False)
     train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(
-        config, return_time=use_time_info
+        config, return_time=use_time_info, use_time_aware_sampler=use_sampler
     )
     print(f"训练集: {len(train_dataset)} 样本")
     print(f"测试集: {len(test_loader.dataset)} 样本")
@@ -215,20 +218,56 @@ def main():
     if args.resume:
         print(f"\n>>> 从检查点恢复: {args.resume}")
         checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-        best_acc_direct = checkpoint.get('acc_direct', 0.0)
         
-        # 恢复 scheduler 状态
-        if 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-            print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}, LR 已接续")
-        else:
-            # 旧 checkpoint 没有 scheduler 状态，手动步进到正确位置
-            for _ in range(start_epoch):
-                scheduler.step()
-            print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}, LR 已手动步进")
+        checkpoint_state = checkpoint['model_state_dict']
+        current_state = model.state_dict()
+        
+        # 严格检查形状
+        mismatched_layers = []
+        for name, param in checkpoint_state.items():
+            if name in current_state and param.shape != current_state[name].shape:
+                mismatched_layers.append(f"{name} (checkpoint: {param.shape}, current: {current_state[name].shape})")
+        
+        if mismatched_layers:
+            raise RuntimeError(
+                f"❌ 检查点与当前模型结构不匹配，无法接续训练！\n"
+                f"不匹配的层:\n" + "\n".join(f"  - {l}" for l in mismatched_layers) + "\n"
+                f"请确保检查点与当前配置的个体数量（num_identities）一致。"
+            )
+        
+        # 加载模型权重
+        model.load_state_dict(checkpoint_state)
+        
+        # 关键修改 1：不加载旧的优化器状态，保持配置文件中的初始学习率
+        # 这样可以避免旧的低学习率（如 1e-6）影响新任务
+        print("   ℹ️   不加载旧优化器状态，使用配置文件的初始学习率")
+        
+        # 关键修改 2：根据加载权重的轮次，动态调整 Triplet 开始轮次
+        # 逻辑：既然加载的是第 56 轮的权重（最佳模型），那就从第 57 轮开始引入 Triplet
+        # 这样就不需要干等 80 轮，避免了中间的空窗期
+        checkpoint_epoch = checkpoint.get('epoch', 0)
+        start_epoch = checkpoint_epoch + 1
+        
+        # 强制设置 Triplet 从当前轮次开始，让代码立刻开始 ramp-up
+        config['training']['triplet_start_epoch'] = checkpoint_epoch
+        print(f"   🎯 动态调整: Triplet Loss 将从第 {start_epoch} 轮开始引入 (Warmup)")
+        
+        # 关键修改 3：重建 Scheduler 以对齐新的总轮次 (200)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=config['training']['epochs'],
+            eta_min=config['training']['eta_min']
+        )
+        
+        # 步进到指定的 start_epoch (让学习率平滑过渡到当前水平)
+        for _ in range(start_epoch):
+            scheduler.step()
+            
+        # 打印最大学习率（通常是 ArcFace 或 Bottleneck 的学习率）作为参考
+        # 因为第一个组（Stem）的学习率通常很低，打印它会产生误导
+        max_lr = max(group['lr'] for group in optimizer.param_groups)
+        print(f"   ✅ 模拟接续训练: 已跳过前 {start_epoch} 轮")
+        print(f"   🔄 已重置 Scheduler (T_max={config['training']['epochs']})")
+        print(f"   ✅ 当前最大学习率: {max_lr:.6f}")
 
     print(f"\n开始训练: {start_epoch} → {config['training']['epochs']} epochs")
     print(f"Batch size: {config['training']['batch_size']}, Accumulation: {accumulation_steps}")

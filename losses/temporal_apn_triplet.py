@@ -5,36 +5,34 @@ import torch.nn.functional as F
 
 class TemporalAPNTripletLoss(nn.Module):
     """
-    时间跨度感知 APN Triplet Loss
+    时间跨度感知 APN Triplet Loss (精确到月)
 
     核心思想：
         - Anchor (A): 当前样本
-        - Positive (P): 同类中时间跨度最远的个体（最难区分的同类，时间差异最大）
-        - Negative (N): 异类中时间跨度最近的个体（最容易混淆的异类，时间差异最小）
+        - Positive (P): 同类中【时间跨度最远】的样本
+                      如果时间跨度相同，选【特征距离最远】的样本（Tie-breaker）
+        - Negative (N): 异类中【时间跨度最近】的样本
+                      如果时间跨度相同，选【特征距离最近】的样本（Tie-breaker）
 
-    策略：
-        - 对每个 Anchor，在 batch 内搜索：
-          · Positive: 同类样本中，|time(a) - time(p)| 最大的样本
-          · Negative: 异类样本中，|time(a) - time(n)| 最小的样本
-        - 若多个样本时间跨度相同，选择 embedding 距离最难的作为 tie-breaker
-
-    公式：
-        loss = max(0, d(a, p) - d(a, n) + margin)
-
-    优势：
-        - 强制模型学习时间鲁棒性：即使时间跨度很大，同类样本也应靠近
-        - 防止模型被时间相近的异类样本混淆
-        - 更贴近真实场景：同一只龟在不同年份的外观变化可能很大
+    时间计算规则：
+        - 只精确到【年-月】（忽略日、时、分）
+        - 2010:07:02 与 2010:07:20 视为同一时间，跨度为 0
     """
     def __init__(self, margin: float = 0.3, normalize_embeddings: bool = True):
-        """
-        Args:
-            margin: 间隔阈值，强制正负样本距离差至少为 margin
-            normalize_embeddings: 是否对特征向量做 L2 归一化
-        """
         super().__init__()
         self.margin = margin
         self.normalize_embeddings = normalize_embeddings
+
+    def _truncate_to_month(self, times: torch.Tensor) -> torch.Tensor:
+        """
+        将连续时间截断到月份（忽略日、时、分）
+        例如：2010.25 (4月) -> 2010.25; 2010.28 (4月) -> 2010.25
+        """
+        years = torch.floor(times)
+        # 假设一年12个月，将小数部分映射到月份
+        months = torch.floor((times - years) * 12)
+        # 返回每个月的中间值（代表该月）
+        return years + (months + 0.5) / 12.0
 
     def forward(self, embeddings: torch.Tensor, labels: torch.Tensor,
                 times: torch.Tensor) -> torch.Tensor:
@@ -74,56 +72,64 @@ class TemporalAPNTripletLoss(nn.Module):
         if not pos_mask.any() or not neg_mask.any():
             return embeddings.new_tensor(0.0)
 
-        # --- Step 4: 计算时间差距矩阵 ---
+        # --- Step 4: 截断时间并计算时间差距 ---
+        # 先将时间截断到月份（忽略日、时、分），减少微小波动干扰
+        valid_time = ~torch.isnan(times)
+        times_processed = times.clone()
+        
+        # 先截断有效时间（避免 NaN 值被 _truncate_to_month 计算产生奇怪数值）
+        if valid_time.any():
+            times_processed[valid_time] = self._truncate_to_month(times_processed[valid_time])
+        
+        # 再将无效时间设为标记值
+        times_processed[~valid_time] = -100.0
+
         # time_diff[i][j] = |time[i] - time[j]|
-        time_a = times.unsqueeze(1)  # [B, 1]
-        time_b = times.unsqueeze(0)  # [1, B]
+        time_a = times_processed.unsqueeze(1)  # [B, 1]
+        time_b = times_processed.unsqueeze(0)  # [1, B]
         time_diff = torch.abs(time_a - time_b)  # [B, B]
+        time_diff[~valid_time.unsqueeze(0).expand(B, B)] = -100.0  # 标记无效行列
+        time_diff[:, ~valid_time] = -100.0  # 标记无效列
 
-        # 处理 NaN 时间：设为 -1 作为标记
-        valid_time_mask = ~torch.isnan(time_diff)
-        time_diff = time_diff.masked_fill(~valid_time_mask, -1.0)
-
-        # --- Step 5: 对每个 Anchor，选择 Temporal Positive / Negative ---
-        # Positive: 同类中时间差距最大的
-        # Negative: 异类中时间差距最小的
-
+        # --- Step 5: 对每个 Anchor，选择 APN ---
         selected_pos_idx = torch.full((B,), -1, dtype=torch.long, device=labels.device)
         selected_neg_idx = torch.full((B,), -1, dtype=torch.long, device=labels.device)
+        
+        # 标记是否成功选择了样本
+        valid_selection = torch.zeros(B, dtype=torch.bool, device=labels.device)
 
         for i in range(B):
-            # 找 positive candidates（同类且非自己）
-            pos_candidates = pos_mask[i].clone()
-            # 只考虑有时间信息的样本
-            pos_candidates = pos_candidates & valid_time_mask[i]
-
+            # === Positive: 时间跨度最远 -> 距离最远 ===
+            pos_candidates = pos_mask[i].clone() & valid_time[i]
             if pos_candidates.any():
-                # 选时间差距最大的
-                pos_time_diff = time_diff[i].masked_fill(~pos_candidates, -1.0)
-                max_time_diff = pos_time_diff.max()
-
-                # Tie-breaker: 如果多个样本时间差距相同，选 embedding 距离最远的（hardest）
-                candidates_with_max_time = (pos_time_diff == max_time_diff)
-                pos_dist = dist_mat[i].masked_fill(~candidates_with_max_time, -1.0)
+                # 1. 找最大时间差
+                pos_td = time_diff[i].masked_fill(~pos_candidates, -100.0)
+                max_td = pos_td.max()
+                
+                # 2. 找出所有具有该最大时间差的样本
+                max_td_candidates = (pos_td == max_td)
+                
+                # 3. 在候选样本中，找特征距离最远的
+                pos_dist = dist_mat[i].masked_fill(~max_td_candidates, -100.0)
                 selected_pos_idx[i] = pos_dist.argmax()
+                valid_selection[i] = True
 
-            # 找 negative candidates（异类）
-            neg_candidates = neg_mask[i].clone()
-            # 只考虑有时间信息的样本
-            neg_candidates = neg_candidates & valid_time_mask[i]
-
+            # === Negative: 时间跨度最近 -> 距离最近 ===
+            neg_candidates = neg_mask[i].clone() & valid_time[i]
             if neg_candidates.any():
-                # 选时间差距最小的（但必须 > 0）
-                neg_time_diff = time_diff[i].masked_fill(~neg_candidates, float('inf'))
-                min_time_diff = neg_time_diff.min()
-
-                # Tie-breaker: 如果多个样本时间差距相同，选 embedding 距离最近的（hardest）
-                candidates_with_min_time = (neg_time_diff == min_time_diff)
-                neg_dist = dist_mat[i].masked_fill(~candidates_with_min_time, float('inf'))
+                # 1. 找最小时间差
+                neg_td = time_diff[i].masked_fill(~neg_candidates, 100.0)
+                min_td = neg_td.min()
+                
+                # 2. 找出所有具有该最小时间差的样本
+                min_td_candidates = (neg_td == min_td)
+                
+                # 3. 在候选样本中，找特征距离最近的
+                neg_dist = dist_mat[i].masked_fill(~min_td_candidates, 100.0)
                 selected_neg_idx[i] = neg_dist.argmin()
-
+                valid_selection[i] = True
         # --- Step 6: 筛选有效样本 ---
-        valid = (selected_pos_idx >= 0) & (selected_neg_idx >= 0)
+        valid = valid_selection
         if not valid.any():
             return embeddings.new_tensor(0.0)
 

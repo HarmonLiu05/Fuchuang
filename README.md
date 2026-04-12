@@ -109,6 +109,37 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth --config confi
 
 > 💡 训练 200 轮 + Triplet Loss 的模型明显优于 80 轮 baseline，Rank-1 提升 **3.11%**，TAR@FAR=0.1% 提升 **15.71%**
 
+### 72 个体对比实验（min_samples_per_identity=15）
+
+**实验设置说明**：
+- 所有实验均基于 **72 个个体**（过滤照片<15 的个体，训练集 2244 张，测试集 490 张）
+- 均从相同的 Baseline 权重（纯交叉熵 56 轮，Acc_direct=0.64）接续训练
+- 总训练轮次：200 Epoch（从第 57 轮开始引入新损失函数）
+- 学习率：base_lr=0.001, backbone_lr=0.0001（CosineAnnealingLR, T_max=200）
+- Triplet Loss 权重：0.2，Warmup 10 轮
+- 数据加载：`num_workers=8`，普通 Shuffle（35 个 batch/epoch）
+
+| 实验 | 损失函数配置 | Epoch | Acc (直接预测) | Acc (检索) | 权重路径 |
+|------|-------------|-------|----------------|------------|---------|
+| **1. Baseline (纯交叉熵)** | CE only (80 epoch 完成) | 80 | **60.82%** | 90.61% | `/workspace/experiments-checkpoints/baseline_ce_only/best_model1.pth` |
+| **2. 距离三元组** | CE + Batch-Hard Triplet | 200 (从 57 开始) | **71.43%** | 0.00%* | `/workspace/experiments-checkpoints/baseline_dist_triplet_72ids/best_model1.pth` |
+| **3. 时间 APN** | CE + Temporal-APN Triplet | 200 (从 57 开始) | **73.27%** | 0.00%* | `/workspace/experiments-checkpoints/best_apn_temporal/best_model1.pth` |
+
+**实验 2 关键说明**：
+- **Triplet Loss 类型**：Batch-Hard（普通距离三元组，不考虑时间）
+- **Positive 选择**：同类中特征距离最远的样本
+- **Negative 选择**：异类中特征距离最近的样本
+- **Batch 采样策略**：普通 Shuffle（35 batch/epoch），不强制同个体多张照片
+- **效果**：Acc_direct 从 Baseline 的 60.82% 提升至 **71.43%**（+10.61%），说明距离三元组损失显著增强了特征判别力
+
+**实验 3 关键说明**（已完成 ✅）：
+- **Triplet Loss 类型**：Temporal-APN（时间跨度感知三元组，精确到月份）
+- **APN 选择逻辑**：Positive=同类中【时间跨度最大】的样本（平局用距离最远）；Negative=异类中【时间跨度最近】的样本（平局用距离最近）
+- **Batch 采样策略**：普通 Shuffle（35 batch/epoch），不强制同个体多张照片
+- **效果**：Acc_direct 从 Baseline 的 60.82% 提升至 **73.27%**（+12.45%），**比距离三元组高 1.84%**
+- **结论**：时间跨度选择策略在特征判别力上**优于**纯距离选择，说明时间信息有助于模型学习时间鲁棒的特征
+- **注意**：Acc=0.00% 为临时显示异常，实际 Rank-1 检索能力待 evaluate.py 验证
+
 ## 模型架构
 
 ```

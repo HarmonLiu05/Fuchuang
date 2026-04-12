@@ -1,0 +1,63 @@
+# Baseline 实验2：距离三元组损失 (Batch-Hard)
+# 数据集：72 个个体 (min_samples=15)
+# 采样方式：普通 Shuffle (迭代多，训练快)
+# 目的：对比纯交叉熵和时间 APN 的基准参照
+
+data:
+  root_dir: "/workspace/turtlehead-dataset/Turtel_dataset"
+  splits_dir: "dataset_splits"
+  dataset_name: "dataset_D_ge3years_count"
+  train_json: "train.json"
+  test_json: "test.json"
+  image_size: 224
+  num_workers: 4
+  min_samples_per_identity: 15  # 保持一致：72 个个体
+
+model:
+  backbone: resnet101
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  use_se_block: false
+  label_smoothing: 0.1
+
+training:
+  batch_size: 64
+  accumulation_steps: 1
+  epochs: 200              # 强制总轮次为 200
+  freeze_until_epoch: 0
+  optimizer: Adam
+  base_lr: 0.001           # 对齐 Baseline：使用高学习率以保证公平对比
+  backbone_lr: 0.0001      # 对齐 Baseline
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+  
+  # === 开启普通距离三元组 ===
+  triplet_weight: 0.2
+  triplet_margin: 0.3
+  triplet_start_epoch: 0       # 从第 1 轮（相对新任务）就开始
+  triplet_warmup_epochs: 10
+  
+  use_time_weighted_triplet: false
+  use_temporal_apn_triplet: false  # 关闭时间 APN
+  
+  checkpoint_dir: "/workspace/experiments-checkpoints/baseline_dist_triplet_72ids"
+  log_interval: 10
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]
