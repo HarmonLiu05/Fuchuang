@@ -1,39 +1,51 @@
 # 🐢 龟类个体识别系统 (Turtle ArcFace)
 
-基于 ResNet101 + ArcFace 的龟类头部个体识别模型，支持 Optuna 超参数自动优化。
+基于 ResNet101 + ArcFace 的龟类头部个体识别模型，支持 **时间跨度感知三元组损失 (Temporal APN)** 和 **时间加权 Triplet Loss**。
 
 ## 功能
 
 - ✅ **个体识别**：输入龟类头部图像，输出个体 ID
-- ✅ **Optuna 超参数优化**：自动搜索最佳学习率、batch size、dropout 等
+- ✅ **时间跨度感知 Triplet Loss (Temporal APN)**：同类选时间跨度最大的样本作为 Positive，异类选时间跨度最小的作为 Negative
+- ✅ **时间加权 Triplet Loss**：根据时间差距动态调整 Triplet Loss 权重
 - ✅ **混合精度训练**：支持 FP16，节省显存
 - ✅ **分阶段训练**：先冻结 backbone，后微调整体
 - ✅ **数据增强**：翻转、仿射、颜色抖动、高斯模糊、随机擦除
 - ✅ **评估指标**：Accuracy、TAR@FAR、Rank-1
-- ✅ **多 Backbone 支持**：ResNet50 / ResNet101
+- ✅ **多 Backbone 支持**：ResNet50 / ResNet101 / ResNet152
 - ✅ **多层 MLP Bottleneck**：增强非线性表达能力
+- ✅ **SE-Block 注意力**：可选的特征通道注意力模块
+- ✅ **分层学习率**：不同 backbone 层使用不同学习率
 
 ## 项目结构
 
 ```
-chimpanzee_arcface/
+Fuchuang/
 ├── configs/
-│   ├── config_turtle.yaml       # 龟类训练配置
-│   └── config_optuna.yaml       # Optuna 优化配置
+│   ├── config_turtle.yaml                  # 标准训练配置（时间加权 Triplet）
+│   ├── config_baseline_ce_only.yaml        # Baseline：纯交叉熵
+│   ├── config_baseline_dist_triplet_72ids.yaml  # Baseline：距离三元组
+│   ├── config_best_apn_temporal.yaml       # 时间 APN 三元组
+│   ├── config_exp3_temporal_apn.yaml       # 实验3：时间 APN
+│   └── config_exp3_temporal_apn_72ids.yaml # 实验3：时间 APN（72个体）
 ├── data/
 │   ├── dataset.py               # 数据增强函数
 │   ├── turtle_dataset.py        # COCO 格式数据集加载器
-│   └── prepare_turtle_data.py   # 数据准备函数
+│   └── prepare_turtle_data.py   # 数据准备（支持 TimeAwareBatchSampler）
 ├── models/
-│   ├── backbone.py              # ResNet50/101 backbone
+│   ├── backbone.py              # ResNet50/101/152 backbone
 │   ├── bottleneck.py            # 多层 MLP 瓶颈层
 │   ├── arcface.py               # ArcFace Head
 │   └── se_block.py              # SE-Block 注意力模块
+├── losses/
+│   ├── triplet.py               # Batch-Hard Triplet Loss
+│   ├── time_weighted_triplet.py # 时间加权 Triplet Loss
+│   └── temporal_apn_triplet.py  # 时间跨度感知 APN Triplet Loss
+├── samplers/
+│   └── time_aware_sampler.py    # 时间感知 Batch 采样器
 ├── utils/
 │   ├── metrics.py               # 评估指标计算
 │   └── utils.py                 # 工具函数
-├── optimize.py                  # Optuna 超参数优化脚本
-├── train_turtle.py              # 龟类训练脚本
+├── train_turtle.py              # 训练脚本（支持 --resume）
 ├── evaluate.py                  # 评估脚本
 ├── inference.py                 # 推理脚本
 ├── requirements.txt             # 依赖
@@ -56,14 +68,26 @@ pip install -r requirements.txt
 git clone https://github.com/HarmonLiu05/turtlehead-dataset.git
 ```
 
-### 3. 训练模型（手动配置）
+### 3. 下载预训练权重
+
+预训练权重已独立仓库：[Weight](https://github.com/HarmonLiu05/Weight)
 
 ```bash
-# 编辑 configs/config_turtle.yaml 修改参数后运行
-python train_turtle.py --config configs/config_turtle.yaml
+git clone https://github.com/HarmonLiu05/Weight.git
 ```
 
-### 4. Optuna 自动优化（推荐）
+### 4. 训练模型（手动配置）
+
+```bash
+# 标准训练（时间加权 Triplet Loss）
+python train_turtle.py --config configs/config_turtle.yaml
+
+# 从 checkpoint 恢复训练
+python train_turtle.py --config configs/config_turtle.yaml \
+    --resume /path/to/checkpoint.pth
+```
+
+### 5. Optuna 自动优化（推荐）
 
 ```bash
 # 自动搜索 50 组超参数组合
@@ -78,10 +102,11 @@ optuna-dashboard sqlite:///results/optuna_study/study.db
 # 浏览器打开 http://localhost:8080
 ```
 
-### 5. 评估模型
+### 6. 评估模型
 
 ```bash
-python evaluate.py --checkpoint checkpoints_turtle/best_model.pth --config configs/config_turtle.yaml
+python evaluate.py --checkpoint checkpoints_turtle/best_model.pth \
+    --config configs/config_turtle.yaml
 ```
 
 ## 实验结果
@@ -94,51 +119,63 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth --config confi
 | dataset_E_ge5years_count | 38 | 966 | 438 | ≥5 年 |
 | dataset_F_ge7years_count | 10 | 326 | 147 | ≥7 年 |
 
-### 模型评估对比（dataset_D）
+### 模型评估对比（dataset_D, 107 个体）
 
 | 模型 | Epoch | Triplet Loss | Acc (直接预测) | Rank-1 (检索) | TAR@FAR=0.1% | Threshold | 说明 |
 |------|-------|--------------|----------------|---------------|--------------|-----------|------|
 | **epoch200_resnet-101_triloss_83%.pth** | 200 | ✅ 启用 | 85.84% | **94.13%** | **79.77%** | 0.6496 | 🥇 最佳模型 |
 | best_model101_80epoch.pth | 80 | ❌ | 64.77% | 91.02% | 64.06% | 0.6016 | Baseline |
-| best_model1.pth | - | - | - | - | - | - | 待评估 |
-
-**指标说明**：
-- **Acc (Accuracy)**: 直接预测准确率，ArcFace head 输出的 argmax 与真实标签比较
-- **Rank-1**: 检索第一正确率，基于特征向量相似度（余弦/欧氏距离）检索，最相似样本的标签是否正确
-- **TAR@FAR=0.1%**: 误识率 0.1% 时的真接受率
 
 > 💡 训练 200 轮 + Triplet Loss 的模型明显优于 80 轮 baseline，Rank-1 提升 **3.11%**，TAR@FAR=0.1% 提升 **15.71%**
 
-### 72 个体对比实验（min_samples_per_identity=15）
+### 72 个体消融实验（min_samples_per_identity=15）
 
-**实验设置说明**：
-- 所有实验均基于 **72 个个体**（过滤照片<15 的个体，训练集 2244 张，测试集 490 张）
-- 均从相同的 Baseline 权重（纯交叉熵 56 轮，Acc_direct=0.64）接续训练
+**实验设置**：
+- 所有实验基于 **72 个个体**（过滤照片<15 的个体，训练集 2244 张，测试集 490 张）
+- 均从相同 Baseline 权重（纯交叉熵 56 轮，Acc_direct=0.64）接续训练
 - 总训练轮次：200 Epoch（从第 57 轮开始引入新损失函数）
 - 学习率：base_lr=0.001, backbone_lr=0.0001（CosineAnnealingLR, T_max=200）
 - Triplet Loss 权重：0.2，Warmup 10 轮
-- 数据加载：`num_workers=8`，普通 Shuffle（35 个 batch/epoch）
 
-| 实验 | 损失函数配置 | Epoch | Acc (直接预测) | Acc (检索) | 权重路径 |
-|------|-------------|-------|----------------|------------|---------|
-| **1. Baseline (纯交叉熵)** | CE only (80 epoch 完成) | 80 | **60.82%** | 90.61% | `/workspace/experiments-checkpoints/baseline_ce_only/best_model1.pth` |
-| **2. 距离三元组** | CE + Batch-Hard Triplet | 200 (从 57 开始) | **71.43%** | 0.00%* | `/workspace/experiments-checkpoints/baseline_dist_triplet_72ids/best_model1.pth` |
-| **3. 时间 APN** | CE + Temporal-APN Triplet | 200 (从 57 开始) | **73.27%** | 0.00%* | `/workspace/experiments-checkpoints/best_apn_temporal/best_model1.pth` |
+| 实验 | 损失函数配置 | Epoch | Acc (直接预测) | Acc (检索) | 说明 |
+|------|-------------|-------|----------------|------------|------|
+| **1. Baseline (纯交叉熵)** | CE only (80 epoch 完成) | 80 | **60.82%** | 90.61% | 对照基准 |
+| **2. 距离三元组** | CE + Batch-Hard Triplet | 200 (从 57 开始) | **71.43%** | 0.00%* | +10.61% |
+| **3. 时间 APN** | CE + Temporal-APN Triplet | 200 (从 57 开始) | **73.27%** | 0.00%* | **+12.45%** |
 
-**实验 2 关键说明**：
-- **Triplet Loss 类型**：Batch-Hard（普通距离三元组，不考虑时间）
-- **Positive 选择**：同类中特征距离最远的样本
-- **Negative 选择**：异类中特征距离最近的样本
-- **Batch 采样策略**：普通 Shuffle（35 batch/epoch），不强制同个体多张照片
-- **效果**：Acc_direct 从 Baseline 的 60.82% 提升至 **71.43%**（+10.61%），说明距离三元组损失显著增强了特征判别力
+**关键结论**：
+- 距离三元组使 Acc_direct 提升 **+10.61%**
+- 时间 APN 比距离三元组再高 **+1.84%**
+- **时间信息有助于模型学习时间鲁棒的特征**
 
-**实验 3 关键说明**（已完成 ✅）：
-- **Triplet Loss 类型**：Temporal-APN（时间跨度感知三元组，精确到月份）
-- **APN 选择逻辑**：Positive=同类中【时间跨度最大】的样本（平局用距离最远）；Negative=异类中【时间跨度最近】的样本（平局用距离最近）
-- **Batch 采样策略**：普通 Shuffle（35 batch/epoch），不强制同个体多张照片
-- **效果**：Acc_direct 从 Baseline 的 60.82% 提升至 **73.27%**（+12.45%），**比距离三元组高 1.84%**
-- **结论**：时间跨度选择策略在特征判别力上**优于**纯距离选择，说明时间信息有助于模型学习时间鲁棒的特征
-- **注意**：Acc=0.00% 为临时显示异常，实际 Rank-1 检索能力待 evaluate.py 验证
+> *Acc=0.00% 为临时显示异常，实际 Rank-1 检索能力待 evaluate.py 验证
+
+## 🚧 下一步目标
+
+### 1. 在 100+ 个体上验证 APN 有效性
+
+当前 72 个体的消融实验已证明时间 APN 优于纯距离三元组（+1.84%），但样本量有限。下一步将在 **107 个体的 dataset_D**（min_samples≥5）上验证：
+
+- [ ] 使用完整 107 个体重新训练 Baseline / 距离三元组 / 时间 APN
+- [ ] 对比 APN 在更大个体量级下的增益是否依然显著
+- [ ] 验证时间跨度选择策略是否在更多个体间具有泛化能力
+
+### 2. 迁移到人脸数据集
+
+将当前训练框架迁移到**人脸个体识别**任务，验证时间 APN 三元组在更广泛场景下的有效性：
+
+- [ ] 适配人脸数据集格式（如 VGGFace2、CASIA-WebFace、MS1M 等）
+- [ ] 将"拍摄时间"映射为"采集时间"，保留时间跨度选择逻辑
+- [ ] 训练并对比：人脸场景下 APN vs 距离三元组的性能差异
+- [ ] 探索跨物种泛化：龟类 → 人脸的特征学习是否可以互相迁移
+
+## 损失函数对比
+
+| 损失类型 | Positive 选择 | Negative 选择 | 适用场景 |
+|---------|--------------|--------------|---------|
+| **Batch-Hard Triplet** | 同类中距离最远 | 异类中距离最近 | 通用度量学习 |
+| **Time-Weighted Triplet** | 同类中距离最远 | 异类中距离最近 + 时间加权 | 有时间信息的数据集 |
+| **Temporal APN Triplet** | 同类中**时间跨度最大** | 异类中**时间跨度最小** | 强调时间鲁棒性 |
 
 ## 模型架构
 
@@ -153,7 +190,7 @@ AdaptiveAvgPool(7×7) → 2048 维
     ↓
 多层 MLP Bottleneck: 2048→1024→512 + BN + ReLU + Dropout + L2 归一化
     ↓
-ArcFace Head: s=30.0, m=0.4, 107 分类
+ArcFace Head: s=30.0, m=0.35, 107 分类
     ↓
 输出个体 ID
 ```
@@ -163,30 +200,15 @@ ArcFace Head: s=30.0, m=0.4, 107 分类
 | 阶段 | Epoch | 训练内容 | 学习率 |
 |------|-------|---------|--------|
 | 阶段 1 | 1-10 | backbone.layer4+ + bottleneck + arcface | backbone: 1e-4, 其他: 1e-3 |
-| 阶段 2 | 11-30 | 全部参数微调 | 余弦衰减 |
+| 阶段 2 | 11-200 | 全部参数微调 | 余弦衰减 → 1e-6 |
 
-## Optuna 搜索空间
+### Triplet Loss 调度
 
-| 参数 | 搜索范围 |
-|------|---------|
-| backbone | resnet50, resnet101 |
-| base_lr | 1e-4 ~ 1e-2 |
-| backbone_lr | 1e-5 ~ 1e-3 |
-| batch_size | 64, 128, 256 |
-| dropout | 0.2 ~ 0.6 |
-| arcface_m | 0.3 ~ 0.5 |
-| arcface_s | 25.0 ~ 35.0 |
-| weight_decay | 1e-5 ~ 1e-4 |
-| freeze_until_layer | 0 ~ 5 |
-| use_se_block | true, false |
-
-## 数据集
-
-- **名称**: Turtle Head Dataset
-- **个体数**: 最高 107 个（dataset_D）
-- **图片数**: 最高 3,814 张
-- **格式**: COCO JSON 标注
-- **来源**: [turtlehead-dataset](https://github.com/HarmonLiu05/turtlehead-dataset)
+| Epoch | Triplet 状态 | 权重 |
+|-------|-------------|------|
+| 0-79 | ❌ 未启用 | 0 |
+| 80-99 | ⏳ Warmup | 0 → 0.2 |
+| 100-200 | ✅ 启用 | 0.2 |
 
 ## 依赖
 
@@ -203,6 +225,11 @@ faiss-cpu>=1.7.0
 optuna>=3.0.0
 kaleido>=0.2.1
 ```
+
+## 相关仓库
+
+- 📦 [数据集](https://github.com/HarmonLiu05/turtlehead-dataset)
+- ⚖️ [预训练权重](https://github.com/HarmonLiu05/Weight)
 
 ## License
 
