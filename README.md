@@ -173,6 +173,25 @@ python evaluate.py --checkpoint checkpoints_turtle/best_model.pth \
 
 > *Acc=0.00% 为临时显示异常，实际 Rank-1 检索能力待 evaluate.py 验证
 
+### 107 个体实验（min_samples_per_identity=5，完整数据集）
+
+**实验设置**：
+- 基于 **107 个个体**（过滤照片<5 的个体，训练集 2616 张，测试集 1158 张）
+- 从 Baseline CE 80 轮权重接续训练（Acc_direct=64.77%）
+- 总训练轮次：200 Epoch（从第 80 轮开始引入 Triplet Loss）
+- 学习率：base_lr=0.001, backbone_lr=0.0001（CosineAnnealingLR, T_max=200）
+- Triplet Loss 权重：0.2，Warmup 20 轮
+
+| 实验 | 损失函数配置 | Epoch | Acc (直接预测) | 说明 |
+|------|-------------|-------|----------------|------|
+| **1. Baseline (纯交叉熵)** | CE only (80 epoch 完成) | 80 | **64.77%** | 对照基准 |
+| **2. 距离三元组** | CE + Batch-Hard Triplet | 200 (从 80 开始) | — | 待训练/评估 |
+| **3. 时间 APN** | CE + Temporal-APN Triplet | 200 (从 80 开始) | **70.21%** | **+5.44%** ✅ |
+
+**关键结论**：
+- 时间 APN 使 Acc_direct 从 Baseline 的 64.77% 提升至 **70.21%**（+5.44%）
+- 对比 72 个体（+12.45%），107 个体增益缩小至 +5.44%，说明个体越多、样本越稀疏，APN 的边际效益递减
+
 ### 🆕 双 Triplet 联合损失实验（设计阶段）
 
 **核心假设**：距离三元组和时间三元组可能学到**互补的特征能力**，同时使用是否比单独使用更好？
