@@ -9,10 +9,14 @@ from data.turtle_dataset import TurtleDataset
 from data.dataset import get_train_transform, get_val_transform
 
 
-def prepare_turtle_dataloaders(config):
+def prepare_turtle_dataloaders(config, return_time=False):
     """
     准备龟类数据集的DataLoader
-    
+
+    Args:
+        config: 配置字典
+        return_time: 是否返回时间信息（用于时间加权triplet loss）
+
     Returns:
         train_loader: 训练集DataLoader
         test_loader: 测试集DataLoader
@@ -21,17 +25,19 @@ def prepare_turtle_dataloaders(config):
     """
     # 创建训练集
     train_dataset = TurtleDataset(
-        config, 
+        config,
         split='train',
-        transform=get_train_transform(config)
+        transform=get_train_transform(config),
+        return_time=return_time
     )
-    
+
     # 创建测试集（共享train集的identity_map）
     test_dataset = TurtleDataset(
         config,
         split='test',
         transform=get_val_transform(config),
-        identity_map=train_dataset.identity_map
+        identity_map=train_dataset.identity_map,
+        return_time=return_time
     )
     
     num_identities = train_dataset.num_identities

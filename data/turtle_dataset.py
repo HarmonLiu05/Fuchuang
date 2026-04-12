@@ -11,17 +11,19 @@ from torch.utils.data import Dataset
 class TurtleDataset(Dataset):
     """龟类数据集COCO格式加载器"""
     
-    def __init__(self, config, split='train', transform=None, identity_map=None):
+    def __init__(self, config, split='train', transform=None, identity_map=None, return_time=False):
         """
         Args:
             config: 配置字典
             split: 'train' 或 'test'
             transform: 数据增强transform
             identity_map: 身份映射字典（test集共享train集的映射）
+            return_time: 是否返回时间信息（用于时间加权triplet loss）
         """
         self.config = config
         self.split = split
         self.transform = transform
+        self.return_time = return_time
         
         # 构建JSON路径
         root_dir = config['data']['root_dir']
@@ -126,6 +128,9 @@ class TurtleDataset(Dataset):
         # 应用transform
         if self.transform:
             image = self.transform(image)
+
+        if self.return_time:
+            return image, sample['label'], sample['date']
 
         return image, sample['label']
     

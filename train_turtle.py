@@ -21,6 +21,7 @@ from utils.utils import load_config, set_seed, get_device, ensure_dir
 from utils.metrics import compute_all_metrics, compute_pred_accuracy
 from losses.triplet import BatchHardTripletLoss
 from losses.time_weighted_triplet import TimeWeightedTripletLoss
+from losses.temporal_apn_triplet import TemporalAPNTripletLoss
 from samplers.time_aware_sampler import _to_numeric_time
 
 
@@ -155,7 +156,13 @@ def main():
     print(f"配置文件: {args.config}")
 
     # 准备数据
-    train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(config)
+    use_time_info = (
+        config['training'].get('use_time_weighted_triplet', False) or
+        config['training'].get('use_temporal_apn_triplet', False)
+    )
+    train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(
+        config, return_time=use_time_info
+    )
     print(f"训练集: {len(train_dataset)} 样本")
     print(f"测试集: {len(test_loader.dataset)} 样本")
 
@@ -172,7 +179,16 @@ def main():
     
     # 根据配置选择 Triplet Loss 类型
     use_time_weighted = config['training'].get('use_time_weighted_triplet', False)
-    if use_time_weighted:
+    use_temporal_apn = config['training'].get('use_temporal_apn_triplet', False)
+    
+    if use_temporal_apn:
+        print(">>> 启用时间跨度感知 APN Triplet Loss")
+        triplet_criterion = TemporalAPNTripletLoss(
+            margin=config['training'].get('triplet_margin', 0.3),
+            normalize_embeddings=True
+        )
+        use_time_info = True  # ensure time data is loaded
+    elif use_time_weighted:
         print(">>> 启用时间加权 Triplet Loss")
         triplet_criterion = TimeWeightedTripletLoss(
             margin=config['training'].get('triplet_margin', 0.3),
@@ -203,11 +219,26 @@ def main():
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
         best_acc_direct = checkpoint.get('acc_direct', 0.0)
-        print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}")
+        
+        # 恢复 scheduler 状态
+        if 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}, LR 已接续")
+        else:
+            # 旧 checkpoint 没有 scheduler 状态，手动步进到正确位置
+            for _ in range(start_epoch):
+                scheduler.step()
+            print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}, LR 已手动步进")
 
     print(f"\n开始训练: {start_epoch} → {config['training']['epochs']} epochs")
     print(f"Batch size: {config['training']['batch_size']}, Accumulation: {accumulation_steps}")
-    print(f"Triplet Loss: {'Time-Weighted' if use_time_weighted else 'Batch-Hard'} (weight={config['training']['triplet_weight']}, alpha={config['training'].get('time_alpha', 0)})")
+    if use_temporal_apn:
+        triplet_type = 'Temporal-APN'
+    elif use_time_weighted:
+        triplet_type = 'Time-Weighted'
+    else:
+        triplet_type = 'Batch-Hard'
+    print(f"Triplet Loss: {triplet_type} (weight={config['training']['triplet_weight']}, alpha={config['training'].get('time_alpha', 0)})")
 
     for epoch in range(start_epoch, config['training']['epochs']):
         # === 训练 ===
@@ -222,8 +253,8 @@ def main():
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
-            # 如果使用加权 Triplet，提取时间信息
-            if use_time_weighted:
+            # 如果使用需要时间信息的 Triplet Loss，提取时间信息
+            if use_time_info:
                 times_list = [_to_numeric_time(batch[2][i] if len(batch) > 2 else None)
                               for i in range(len(images))]
                 times = torch.tensor([t if t is not None else float('nan') for t in times_list],
@@ -233,9 +264,9 @@ def main():
             with torch.amp.autocast('cuda', enabled=amp_enabled):
                 output, features = model(images, labels)
                 cls_loss = criterion(output, labels)
-                
+
                 if current_triplet_weight > 0:
-                    if use_time_weighted:
+                    if use_time_info:
                         tri_loss = triplet_criterion(features, labels, times)
                     else:
                         tri_loss = triplet_criterion(features, labels)
@@ -275,6 +306,7 @@ def main():
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
                 'accuracy': acc,
                 'acc_direct': acc_direct,
                 'config': config

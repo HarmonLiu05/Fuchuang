@@ -1,5 +1,5 @@
 data:
-  root_dir: "E:/fuchuang/turtlehead-dataset/Turtel_dataset"
+  root_dir: "/workspace/turtlehead-dataset/Turtel_dataset"
   splits_dir: "dataset_splits"
   dataset_name: "dataset_D_ge3years_count"  # 可切换为 A~F 任意一个
   train_json: "train.json"
@@ -35,7 +35,8 @@ training:
   triplet_margin: 0.3
   triplet_start_epoch: 80        # 开始引入 Triplet
   triplet_warmup_epochs: 20      # warmup 周期
-  use_time_weighted_triplet: true   # 是否启用时间加权 Triplet Loss
+  use_time_weighted_triplet: false   # 是否启用时间加权 Triplet Loss
+  use_temporal_apn_triplet: false    # 是否启用时间跨度感知 APN Triplet Loss
   time_alpha: 0.3               # 时间权重系数（仅在 use_time_weighted_triplet=true 时生效）
   max_time_gap: 10.0             # 最大时间跨度（年）
   checkpoint_dir: "checkpoints_turtle"
