@@ -88,7 +88,7 @@ def main():
     print(f"加载检查点: {args.checkpoint}")
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
 
-    # 优先使用 checkpoint 中的配置
+    # 优先使用 checkpoint 中的配置（模型结构），但数据路径使用当前配置
     if 'config' in checkpoint:
         ckpt_config = checkpoint['config']
         # 合并配置，保留 checkpoint 中的关键字段
@@ -99,7 +99,13 @@ def main():
             'use_se_block': ckpt_config['model'].get('use_se_block', False),
             'freeze_until_layer': ckpt_config['model'].get('freeze_until_layer', 3),
         })
+        # 保留当前配置的数据路径，避免checkpoint中的路径覆盖
+        current_data_config = config['data'].copy()
         config['data'] = ckpt_config.get('data', config.get('data', {}))
+        # 用当前配置覆盖数据路径关键字段
+        for key in ['root_dir', 'splits_dir', 'dataset_name', 'train_json', 'test_json']:
+            if key in current_data_config:
+                config['data'][key] = current_data_config[key]
         print(f"使用 checkpoint 中的配置: backbone={config['model']['backbone']}, bottleneck_dim={config['model']['bottleneck_dim']}")
 
     arcface_weight = checkpoint['model_state_dict']['arcface.weight']

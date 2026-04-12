@@ -5,7 +5,7 @@ data:
   train_json: "train.json"
   test_json: "test.json"
   image_size: 224  # 提升到 224×224（原来是 112）
-  num_workers: 0
+  num_workers: 4  # Windows 本地训练
   min_samples_per_identity: 5
 
 model:
@@ -15,14 +15,14 @@ model:
   use_mlp_bottleneck: true  # 使用多层 MLP
   dropout: 0.4
   arcface_s: 30.0
-  arcface_m: 0.4
+  arcface_m: 0.35
   use_se_block: false  # 可选：true 启用 SE-Block 注意力
   label_smoothing: 0.1
 
 training:
-  batch_size: 16
-  accumulation_steps: 4
-  epochs: 30
+  batch_size: 64
+  accumulation_steps: 1
+  epochs: 200
   freeze_until_epoch: 10
   optimizer: Adam
   base_lr: 0.001
@@ -31,6 +31,13 @@ training:
   scheduler: CosineAnnealingLR
   eta_min: 0.000001
   precision: 16
+  triplet_weight: 0.2
+  triplet_margin: 0.3
+  triplet_start_epoch: 80        # 开始引入 Triplet
+  triplet_warmup_epochs: 20      # warmup 周期
+  use_time_weighted_triplet: true   # 是否启用时间加权 Triplet Loss
+  time_alpha: 0.3               # 时间权重系数（仅在 use_time_weighted_triplet=true 时生效）
+  max_time_gap: 10.0             # 最大时间跨度（年）
   checkpoint_dir: "checkpoints_turtle"
   log_interval: 10
 
