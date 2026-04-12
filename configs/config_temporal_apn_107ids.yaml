@@ -18,7 +18,7 @@ model:
   bottleneck_dim: 512
   use_mlp_bottleneck: true
   dropout: 0.4
-  arcface_s: 30.0
+  arcface_s: 25.0               # 改为25.0，与同学配置对齐，提升Acc_direct
   arcface_m: 0.35
   use_se_block: false
   label_smoothing: 0.1
