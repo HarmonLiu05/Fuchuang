@@ -1,0 +1,57 @@
+# FGNET: 时间 APN 三元组 (Temporal-APN Triplet)
+data:
+  dataset_type: fgnet
+  fgnet_root: "E:/fuchuang/FGNET/FGNET"
+  age_annotation_path: "age_annotations/kara2015_ageannotations/age_groundtruth.csv"
+  image_size: 224
+  num_workers: 0
+  min_samples_per_identity: 3
+
+model:
+  backbone: resnet101
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  use_se_block: false
+  label_smoothing: 0.1
+
+training:
+  batch_size: 32
+  accumulation_steps: 1
+  epochs: 150
+  freeze_until_epoch: 10
+  optimizer: Adam
+  base_lr: 0.001
+  backbone_lr: 0.0001
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+
+  # 启用时间 APN 三元组
+  triplet_start_epoch: 50
+  triplet_warmup_epochs: 15
+  triplet_weight: 0.2
+  triplet_margin: 0.3
+  use_temporal_apn_triplet: true
+  use_time_weighted_triplet: false
+  use_time_aware_sampler: false
+
+  checkpoint_dir: "checkpoints_fgnet/temporal_apn"
+  log_interval: 10
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]
