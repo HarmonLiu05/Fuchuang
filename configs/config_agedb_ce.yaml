@@ -1,0 +1,56 @@
+# AgeDB 人脸数据集 - 纯交叉熵 Baseline
+# 567 人，16,488 张图片，跨年龄（0-96 岁）
+
+data:
+  root_dir: "/workspace/AgeDB"
+  dataset_type: "agedb"
+  min_samples_per_identity: 5
+  image_size: 224
+  num_workers: 8
+
+model:
+  backbone: resnet101
+  pretrained: true
+  bottleneck_dim: 512
+  use_mlp_bottleneck: true
+  dropout: 0.4
+  arcface_s: 30.0
+  arcface_m: 0.35
+  use_se_block: false
+  label_smoothing: 0.1
+
+training:
+  batch_size: 64
+  accumulation_steps: 1
+  epochs: 80
+  freeze_until_epoch: 0
+  optimizer: Adam
+  base_lr: 0.001
+  backbone_lr: 0.0001
+  weight_decay: 0.0005
+  scheduler: CosineAnnealingLR
+  eta_min: 0.000001
+  precision: 16
+
+  # 关闭所有三元组损失
+  triplet_weight: 0.0
+  triplet_margin: 0.3
+  triplet_start_epoch: 999
+  triplet_warmup_epochs: 0
+  use_temporal_apn_triplet: false
+
+  checkpoint_dir: "/workspace/experiments-checkpoints/agedb_ce_only"
+  log_interval: 10
+
+augmentation:
+  random_horizontal_flip: 0.5
+  random_affine_degrees: 15
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.1
+  gaussian_blur_kernel: 3
+  gaussian_blur_sigma: [0.1, 2.0]
+  random_erasing_p: 0.5
+  random_erasing_scale: [0.02, 0.15]
+  random_erasing_ratio: [0.3, 3.3]
