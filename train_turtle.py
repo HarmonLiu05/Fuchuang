@@ -137,7 +137,7 @@ def evaluate(model, dataloader, device):
     ids = torch.cat(ids_list, dim=0)
 
     metrics = compute_all_metrics(features, labels)
-    metrics['accuracy0'] = compute_pred_accuracy(ids, labels)
+    metrics['acc_direct'] = compute_pred_accuracy(ids, labels)
     return metrics
 
 
@@ -191,7 +191,7 @@ def main():
     ensure_dir(checkpoint_dir)
 
     best_acc = 0.0
-    best_acc0 = 0.0
+    best_acc_direct = 0.0
     start_epoch = 0
     accumulation_steps = config['training']['accumulation_steps']
 
@@ -202,8 +202,8 @@ def main():
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
-        best_acc0 = checkpoint.get('accuracy0', 0.0)
-        print(f"   恢复至 Epoch {start_epoch}, 当前 Acc0={best_acc0:.4f}")
+        best_acc_direct = checkpoint.get('acc_direct', 0.0)
+        print(f"   恢复至 Epoch {start_epoch}, 当前 Acc_direct={best_acc_direct:.4f}")
 
     print(f"\n开始训练: {start_epoch} → {config['training']['epochs']} epochs")
     print(f"Batch size: {config['training']['batch_size']}, Accumulation: {accumulation_steps}")
@@ -264,23 +264,23 @@ def main():
 
         avg_loss = total_loss / len(train_loader)
         acc = metrics['accuracy']
-        acc0 = metrics['accuracy0']
-        print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, Acc0={acc0:.4f}, "
+        acc_direct = metrics['acc_direct']
+        print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, Acc_direct={acc_direct:.4f}, "
               f"TripletW={current_triplet_weight:.3f}, LR={scheduler.get_last_lr()[0]:.6f}")
 
-        # === 保存最佳模型（基于 Accuracy0） ===
-        if acc0 > best_acc0:
-            best_acc0 = acc0
+        # === 保存最佳模型（基于 Acc_direct） ===
+        if acc_direct > best_acc_direct:
+            best_acc_direct = acc_direct
             checkpoint = {
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'accuracy': acc,
-                'accuracy0': acc0,
+                'acc_direct': acc_direct,
                 'config': config
             }
             torch.save(checkpoint, os.path.join(checkpoint_dir, 'best_model1.pth'))
-            print(f"  ↳ 保存最佳模型! Acc0={best_acc0:.4f}, Acc={acc:.4f}")
+            print(f"  ↳ 保存最佳模型! Acc_direct={best_acc_direct:.4f}, Acc={acc:.4f}")
 
         # 阶段 2: 解冻 backbone
         if epoch + 1 == config['training'].get('freeze_until_epoch', 10):
@@ -288,7 +288,7 @@ def main():
             model.unfreeze_backbone()
             update_optimizer_backbone_lrs(optimizer, config['training'])
 
-    print(f"\n训练完成! 最佳 Accuracy0: {best_acc0:.4f}, Accuracy: {best_acc:.4f}")
+    print(f"\n训练完成! 最佳 Acc_direct: {best_acc_direct:.4f}, Acc: {best_acc:.4f}")
     print(f"模型保存在: {os.path.join(checkpoint_dir, 'best_model1.pth')}")
 
 

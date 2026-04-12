@@ -78,8 +78,8 @@ def compute_all_metrics(features, labels):
     tar_at_far, threshold = compute_tar_at_far(features, labels, target_far=0.001)
 
     return {
-        'accuracy': accuracy,
-        'accuracy0': None,  # 需要 logits 才能计算，在 evaluate 中单独计算
+        'accuracy': accuracy,  # Rank-1: 检索第一正确率
+        'acc_direct': None,    # 需要 logits 才能计算，在 evaluate 中单独计算
         'tar_at_far_0.1': tar_at_far,
         'threshold': threshold
     }

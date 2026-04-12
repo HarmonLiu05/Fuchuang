@@ -56,15 +56,15 @@ def evaluate_model(model, dataloader, device):
 
     print("\n计算评估指标...")
     metrics = compute_all_metrics(features, labels)
-    metrics['accuracy0'] = compute_pred_accuracy(ids, labels)
+    metrics['acc_direct'] = compute_pred_accuracy(ids, labels)
 
     print("\n" + "="*50)
     print("评估结果")
     print("="*50)
-    print(f"Accuracy (Rank-1):     {metrics['accuracy']:.4f}")
-    print(f"Accuracy0 (Direct):    {metrics['accuracy0']:.4f}")
-    print(f"TAR@FAR=0.1%:          {metrics['tar_at_far_0.1']:.4f}")
-    print(f"Threshold:             {metrics['threshold']:.4f}")
+    print(f"Acc (直接预测):       {metrics['acc_direct']:.4f}")
+    print(f"Rank-1 (检索):        {metrics['accuracy']:.4f}")
+    print(f"TAR@FAR=0.1%:         {metrics['tar_at_far_0.1']:.4f}")
+    print(f"Threshold:            {metrics['threshold']:.4f}")
     print("="*50)
 
     return metrics
