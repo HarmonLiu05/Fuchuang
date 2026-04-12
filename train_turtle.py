@@ -161,6 +161,7 @@ def main():
     use_time_info = use_time_weighted or use_temporal_apn
 
     # 数据集选择器
+    use_sampler = config['training'].get('use_time_aware_sampler', False)
     dataset_type = config['data'].get('dataset_type', 'turtle')
 
     if dataset_type == 'fgnet':
@@ -170,13 +171,11 @@ def main():
         )
         print(">>> 使用 FGNET 人脸数据集")
     else:
-        from data.prepare_turtle_data import prepare_turtle_dataloaders
         train_loader, test_loader, num_identities, train_dataset = prepare_turtle_dataloaders(
             config, return_time=use_time_info, use_time_aware_sampler=use_sampler
         )
         print(">>> 使用龟类数据集")
 
-    use_sampler = config['training'].get('use_time_aware_sampler', False)
     print(f"训练集: {len(train_dataset)} 样本")
     print(f"测试集: {len(test_loader.dataset)} 样本")
 
