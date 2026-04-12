@@ -348,20 +348,38 @@ def main():
         print(f"Epoch {epoch+1}: Loss={avg_loss:.4f}, Acc={acc:.4f}, Acc_direct={acc_direct:.4f}, "
               f"TripletW={current_triplet_weight:.3f}, LR={scheduler.get_last_lr()[0]:.6f}")
 
-        # === 保存最佳模型（基于 Acc_direct） ===
-        if acc_direct > best_acc_direct:
-            best_acc_direct = acc_direct
-            checkpoint = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'accuracy': acc,
-                'acc_direct': acc_direct,
-                'config': config
-            }
-            torch.save(checkpoint, os.path.join(checkpoint_dir, 'best_model1.pth'))
-            print(f"  ↳ 保存最佳模型! Acc_direct={best_acc_direct:.4f}, Acc={acc:.4f}")
+        # === 保存模型 ===
+        save_last_only = config['training'].get('save_last_only', False)
+        
+        if save_last_only:
+            # 只保留最后一个 epoch 的模型
+            if epoch == config['training']['epochs'] - 1:
+                checkpoint = {
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'accuracy': acc,
+                    'acc_direct': acc_direct,
+                    'config': config
+                }
+                torch.save(checkpoint, os.path.join(checkpoint_dir, 'last_model.pth'))
+                print(f"  ↳ 保存最后模型! Epoch {epoch+1}, Acc_direct={acc_direct:.4f}, Acc={acc:.4f}")
+        else:
+            # 保存最佳模型（基于 Acc_direct）
+            if acc_direct > best_acc_direct:
+                best_acc_direct = acc_direct
+                checkpoint = {
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'accuracy': acc,
+                    'acc_direct': acc_direct,
+                    'config': config
+                }
+                torch.save(checkpoint, os.path.join(checkpoint_dir, 'best_model1.pth'))
+                print(f"  ↳ 保存最佳模型! Acc_direct={best_acc_direct:.4f}, Acc={acc:.4f}")
 
         # 阶段 2: 解冻 backbone
         if epoch + 1 == config['training'].get('freeze_until_epoch', 10):
@@ -369,8 +387,13 @@ def main():
             model.unfreeze_backbone()
             update_optimizer_backbone_lrs(optimizer, config['training'])
 
-    print(f"\n训练完成! 最佳 Acc_direct: {best_acc_direct:.4f}, Acc: {best_acc:.4f}")
-    print(f"模型保存在: {os.path.join(checkpoint_dir, 'best_model1.pth')}")
+    print(f"\n训练完成!")
+    if save_last_only:
+        print(f"模型保存在: {os.path.join(checkpoint_dir, 'last_model.pth')}")
+        print(f"最后 Epoch {config['training']['epochs']}, Acc_direct={acc_direct:.4f}, Acc={acc:.4f}")
+    else:
+        print(f"最佳 Acc_direct: {best_acc_direct:.4f}, Acc: {best_acc:.4f}")
+        print(f"模型保存在: {os.path.join(checkpoint_dir, 'best_model1.pth')}")
 
 
 if __name__ == '__main__':

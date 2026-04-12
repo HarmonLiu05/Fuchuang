@@ -21,7 +21,7 @@ model:
 training:
   batch_size: 32
   accumulation_steps: 1
-  epochs: 150
+  epochs: 80                  # 只跑 80 轮,作为 Baseline
   freeze_until_epoch: 10
   optimizer: Adam
   base_lr: 0.001
@@ -40,6 +40,7 @@ training:
 
   checkpoint_dir: "checkpoints_fgnet/baseline"
   log_interval: 10
+  save_last_only: true        # 只保留最后 epoch 的模型,不保留最佳模型
 
 augmentation:
   random_horizontal_flip: 0.5
